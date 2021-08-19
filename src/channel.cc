@@ -141,6 +141,10 @@ int NetLink::_close()
 int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
 {
 	switch(nlh->nlmsg_type) {
+	case NLMSG_DONE:
+		return MNL_CB_STOP;
+	case NLMSG_ERROR:
+		return _log.fail(MNL_CB_ERROR, "Netlink error message");
 	case RTM_NEWROUTE:
 	case RTM_DELROUTE: {
 		auto rm = static_cast<const struct rtmsg *>(mnl_nlmsg_get_payload(nlh));
@@ -282,20 +286,39 @@ int NetLink::_route_attr(const struct nlattr * attr, T & msg)
 
 int NetLink::_process(long timeout, int flags)
 {
-	auto r = mnl_socket_recvfrom(_socket.get(), _buf.data(), _buf.size());
-	if (r < 0) {
+	int len = mnl_socket_recvfrom(_socket.get(), _buf.data(), _buf.size());
+	if (len < 0) {
 		if (errno == EAGAIN)
 			return EAGAIN;
 		return _log.fail(EINVAL, "Failed to recv netlink message: {}", strerror(errno));
 	}
 
-	r = mnl_cb_run(_buf.data(), r, 0, 0, [](auto * hdr, void * user) { return static_cast<NetLink *>(user)->_netlink_cb(hdr); }, this);
+	//r = mnl_cb_run(_buf.data(), r, 0, 0, [](auto * hdr, void * user) { return static_cast<NetLink *>(user)->_netlink_cb(hdr); }, this);
+
+	auto nlh = static_cast<const struct nlmsghdr *>((void *) _buf.data());
+
+	int r = 0;
+	while (mnl_nlmsg_ok(nlh, len)) {
+		if (nlh->nlmsg_flags & NLM_F_DUMP_INTR)
+			return _log.fail(EINTR, "Netlink dump was interrupted");
+
+		r = _netlink_cb(nlh);
+		if (r == MNL_CB_ERROR)
+			return _log.fail(EINVAL, "Failed to handle netlink message {}", nlh->nlmsg_type);
+		else if (r == MNL_CB_STOP)
+			_log.info("Dump completed");
+
+		nlh = mnl_nlmsg_next(nlh, &len);
+	}
+
+	/*
 	if (r == MNL_CB_ERROR) {
 		return _log.fail(EINVAL, "Failed to run netlink callbacks: {}", strerror(errno));
 	} else if (r == MNL_CB_STOP) {
 		_log.debug("Data processed, close channel");
 		//close();
 	}
+	*/
 
 	return 0;
 }
