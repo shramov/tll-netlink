@@ -103,6 +103,7 @@ int NetLink::_open(const PropsView &s)
 		_log.info("Interface {}: {}", ptr->if_index, ptr->if_name);
 		_ifmap[ptr->if_index] = ptr->if_name;
 	}
+	if_freenameindex(ifindex);
 
 	/*
 	auto nlh = mnl_nlmsg_put_header(_buf.data());
