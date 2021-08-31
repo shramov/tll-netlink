@@ -29,7 +29,7 @@
     - {name: src_mask, type: uint8}
     - {name: src, type: ipv4}
 
-- name: route6
+- name: Route6
   id: 30
   fields:
     - {name: action, type: Action}
