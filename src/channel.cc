@@ -260,7 +260,7 @@ int NetLink::_route_attr(const struct nlattr * attr, T & msg)
 		auto it = _ifmap.find(oif);
 		if (it == _ifmap.end())
 			return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", oif);
-		memcpy(msg.oif.data(), it->second.data(), sizeof(msg.oif));
+		memcpy(msg.oif.data(), it->second.data(), std::min(sizeof(msg.oif), it->second.size()));
 		break;
 	}
 	case RTA_DST:
