@@ -9,13 +9,14 @@
     - {name: ipv6, type: byte16}
     - {name: interface, type: byte16, options.type: string}
 
-#- name: link
-#  id: 10
-#  fields:
-#    - {name: action, type: Action}
-#    - {name: index, type: int32}
-#    - {name: name, type: interface}
-#    - {name: flags, type: uint32}
+- name: Link
+  id: 10
+  fields:
+    - {name: action, type: Action}
+    - {name: index, type: int32}
+    - {name: name, type: interface}
+    #- {name: flags, type: uint32}
+    - {name: up, type: uint8}
 
 - name: Route4
   id: 20

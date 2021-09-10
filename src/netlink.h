@@ -27,6 +27,15 @@ typedef uint32_t ipv4;
 typedef tll::scheme::Bytes<16> ipv6;
 typedef tll::scheme::ByteString<16> interface;
 
+struct Link
+{
+	static const int msgid = 10;
+	Action action;
+	int32_t index;
+	interface name;
+	uint8_t up;
+};
+
 struct Route4
 {
 	static const int msgid = 20;

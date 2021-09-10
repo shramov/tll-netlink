@@ -198,6 +198,12 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	printf("\n");
 	*/
 
+	netlink_scheme::Link link = {};
+	link.index = ifi->ifi_index;
+	link.name = name;
+	link.action = nlh->nlmsg_type == RTM_NEWLINK ? netlink_scheme::Action::New : netlink_scheme::Action::Delete;
+	link.up = (ifi->ifi_flags & IFF_UP) ? 1 : 0;
+
 	auto it = _ifmap.find(ifi->ifi_index);
 	if (nlh->nlmsg_type == RTM_NEWLINK) {
 		if (it == _ifmap.end()) {
@@ -211,6 +217,13 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 		_log.debug("Delete interface {}: {}", ifi->ifi_index, name);
 		_ifmap.erase(it);
 	}
+
+	tll_msg_t msg = {};
+	msg.msgid = netlink_scheme::Link::msgid;
+	msg.data = &link;
+	msg.size = sizeof(link);
+
+	_callback_data(&msg);
 
 	return MNL_CB_OK;
 }
