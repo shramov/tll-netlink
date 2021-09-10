@@ -129,6 +129,8 @@ int NetLink::_open(const PropsView &s)
 
 	//portid = mnl_socket_get_portid(nl);
 
+	_update_dcaps(dcaps::CPOLLIN);
+
 	return 0;
 }
 
