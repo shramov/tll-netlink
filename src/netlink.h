@@ -5,7 +5,7 @@
 #pragma pack(push, 1)
 namespace netlink_scheme {
 
-enum class Action : int8_t { New = 1, Delete = 1 };
+enum class Action : int8_t { New = 0, Delete = 1 };
 enum class RType : int8_t
 {
 	UNSPEC = 0,
