@@ -53,15 +53,15 @@ class NetLink : public tll::channel::Base<NetLink>
 	int _route_attr(const struct nlattr *attr, T & msg);
 };
 
-static std::string_view sqlite_scheme = "yamls://[{name: eof, id: 10}]";
-
 int NetLink::_init(const Channel::Url &url, Channel * master)
 {
 	_buf.resize(MNL_SOCKET_BUFFER_SIZE);
 
-	_scheme_control.reset(context().scheme_load(sqlite_scheme));
-	if (!_scheme_control.get())
-		return _log.fail(EINVAL, "Failed to load control scheme");
+	if (_scheme_url)
+		return _log.fail(EINVAL, "Netlink channel has it's own scheme, conflicts with init parameter");
+	_scheme.reset(context().scheme_load(netlink_scheme::scheme_string));
+	if (!_scheme.get())
+		return _log.fail(EINVAL, "Failed to load netlink scheme");
 
 	//if ((internal.caps & (caps::Input | caps::Output)) == caps::Input)
 	//	return _log.fail(EINVAL, "NetLink channel is write-only");
