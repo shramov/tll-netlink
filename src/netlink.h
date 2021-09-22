@@ -5,6 +5,11 @@
 #pragma pack(push, 1)
 namespace netlink_scheme {
 
+template <typename T>
+struct tll_message_info
+{
+};
+
 static constexpr std::string_view scheme_string =
     R"(yamls+gz://eJzlU01vgkAQvfdX7G0vmIhaar2tSIIpFbOitacGZW02IhBZ2hrjf+8sH1q7Gtt67Ik3zJuP9wZqKPJXrIMwvkGIRdkq7QBACJO54HGEO2grNgkQeCTaWs6AV7jHQiYYZHUN4QF7B1Tf7YpK6kHBuUIyeDbJyIN0Cyq7DjEfbNexIDZkTF3SK/NNiB3XJA7gBuBHMpXzcjh2vH5Ju5ULEIn0OsAhde1+ty9jmIo9m7pPgO8BjwdVjZ5H1CKmTbr58Lv8zWhomVIJBFNqjVxnInO6nivzQ+6nrLSnhralbzx5a2ENFVpxBmqbDbxTScaBNNsIphsqKRJsvfDnTGFqKE7kNVLpoCjcxalY8+gVw2616oYOj5byjjyQbgBYcBYGysp+cdr9lPLU6j4B+ziwTiuTj9/ue9whS47ta+MvimicCdaqNDWu1iT8WcgunitfeU8qvufvnJgvrtMdpOJl5adLVb3Cu7hwup7/qBfwTvQ6dtuo3G7+e7fP/Kh/cnvf6xMdeI6x)";
 
@@ -33,16 +38,20 @@ enum class RType : int8_t
 
 struct Link
 {
-	static constexpr int msgid = 10;
 	Action action;
 	int32_t index;
 	tll::scheme::ByteString<16> name;
 	uint8_t up;
 };
 
+template <>
+struct tll_message_info<Link>
+{
+	static constexpr int id = 10;
+	static constexpr std::string_view name = "Link";
+};
 struct Route4
 {
-	static constexpr int msgid = 20;
 	Action action;
 	uint32_t table;
 	RType type;
@@ -53,9 +62,14 @@ struct Route4
 	uint32_t src;
 };
 
+template <>
+struct tll_message_info<Route4>
+{
+	static constexpr int id = 20;
+	static constexpr std::string_view name = "Route4";
+};
 struct Route6
 {
-	static constexpr int msgid = 30;
 	Action action;
 	uint32_t table;
 	RType type;
@@ -66,5 +80,11 @@ struct Route6
 	tll::scheme::Bytes<16> src;
 };
 
+template <>
+struct tll_message_info<Route6>
+{
+	static constexpr int id = 30;
+	static constexpr std::string_view name = "Route6";
+};
 } // namespace netlink_scheme
 #pragma pack(pop)

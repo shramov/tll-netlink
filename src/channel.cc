@@ -219,7 +219,7 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	}
 
 	tll_msg_t msg = {};
-	msg.msgid = netlink_scheme::Link::msgid;
+	msg.msgid = netlink_scheme::tll_message_info<netlink_scheme::Link>::id;
 	msg.data = &link;
 	msg.size = sizeof(link);
 
@@ -251,7 +251,7 @@ int NetLink::_route(const struct nlmsghdr * nlh, const struct rtmsg * rm)
 	}, &data);
 
 	tll_msg_t message = {};
-	message.msgid = T::msgid;
+	message.msgid = netlink_scheme::tll_message_info<T>::id;
 	message.data = &msg;
 	message.size = sizeof(msg);
 
