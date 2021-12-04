@@ -34,7 +34,7 @@ class NetLink : public tll::channel::Base<NetLink>
 	static constexpr std::string_view channel_protocol() { return "netlink"; }
 
 	int _init(const tll::Channel::Url &, tll::Channel *master);
-	int _open(const tll::PropsView &);
+	int _open(const tll::ConstConfig &);
 	int _close();
 	void _destroy();
 
@@ -83,7 +83,7 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 	return 0;
 }
 
-int NetLink::_open(const PropsView &s)
+int NetLink::_open(const tll::ConstConfig &s)
 {
 	//unsigned int seq, portid;
 
