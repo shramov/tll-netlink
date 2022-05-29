@@ -13,6 +13,7 @@
 #include <linux/rtnetlink.h>
 
 #include "tll/channel/base.h"
+#include "tll/channel/module.h"
 
 #include "netlink.h"
 
@@ -341,4 +342,4 @@ int NetLink::_process(long timeout, int flags)
 
 TLL_DEFINE_IMPL(NetLink);
 
-auto channel_module = tll::make_channel_module<NetLink>();
+TLL_DEFINE_MODULE(NetLink);
