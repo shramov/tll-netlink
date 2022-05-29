@@ -33,6 +33,7 @@ class NetLink : public tll::channel::Base<NetLink>
 
  public:
 	static constexpr std::string_view channel_protocol() { return "netlink"; }
+	static constexpr auto scheme_policy() { return Base::SchemePolicy::Manual; }
 
 	int _init(const tll::Channel::Url &, tll::Channel *master);
 	int _open(const tll::ConstConfig &);
