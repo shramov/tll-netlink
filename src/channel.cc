@@ -147,8 +147,10 @@ int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
 	switch(nlh->nlmsg_type) {
 	case NLMSG_DONE:
 		return MNL_CB_STOP;
-	case NLMSG_ERROR:
-		return _log.fail(MNL_CB_ERROR, "Netlink error message");
+	case NLMSG_ERROR: {
+		auto error = static_cast<const struct nlmsgerr *>(mnl_nlmsg_get_payload(nlh));
+		return _log.fail(MNL_CB_ERROR, "Netlink error message: {}", strerror(-error->error));
+	}
 	case RTM_NEWROUTE:
 	case RTM_DELROUTE: {
 		auto rm = static_cast<const struct rtmsg *>(mnl_nlmsg_get_payload(nlh));
