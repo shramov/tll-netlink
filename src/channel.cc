@@ -31,6 +31,10 @@ class NetLink : public tll::channel::Base<NetLink>
 	std::vector<char> _buf;
 	std::map<int, std::string> _ifmap;
 
+	enum class Dump { Init, Link, Route, Addr, Done } _dump = Dump::Init;
+
+	int _request();
+
  public:
 	static constexpr std::string_view channel_protocol() { return "netlink"; }
 	static constexpr auto scheme_policy() { return Base::SchemePolicy::Manual; }
@@ -47,6 +51,7 @@ class NetLink : public tll::channel::Base<NetLink>
 
 	int _netlink_cb(const struct nlmsghdr *nlh);
 	int _link(const struct nlmsghdr *nlh);
+	int _addr(const struct nlmsghdr *nlh);
 
 	template <typename T>
 	int _route(const struct nlmsghdr *nlh, const struct rtmsg * rm);
@@ -87,17 +92,16 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 
 int NetLink::_open(const tll::ConstConfig &s)
 {
-	//unsigned int seq, portid;
-
 	_socket.reset(mnl_socket_open2(NETLINK_ROUTE, SOCK_NONBLOCK));
 	if (!_socket)
 		return _log.fail(EINVAL, "Failed to open netlink socket: {}", strerror(errno));
 
-	if (mnl_socket_bind(_socket.get(), RTMGRP_LINK | RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE, MNL_SOCKET_AUTOPID) < 0)
+	if (mnl_socket_bind(_socket.get(), RTMGRP_LINK | RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR, MNL_SOCKET_AUTOPID) < 0)
 		return _log.fail(EINVAL, "Failed to bind netlink socket: {}", strerror(errno));
 
 	_update_fd(mnl_socket_get_fd(_socket.get()));
 
+	/*
 	auto ifindex = if_nameindex();
 	if (!ifindex)
 		return _log.fail(EINVAL, "Failed to get interface index: {}", strerror(errno));
@@ -106,33 +110,43 @@ int NetLink::_open(const tll::ConstConfig &s)
 		_ifmap[ptr->if_index] = ptr->if_name;
 	}
 	if_freenameindex(ifindex);
-
-	/*
-	auto nlh = mnl_nlmsg_put_header(_buf.data());
-	nlh->nlmsg_type = RTM_GETLINK;
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-	nlh->nlmsg_seq = 0;
-	auto ifi = (struct ifinfomsg *) mnl_nlmsg_put_extra_header(nlh, sizeof(struct ifinfomsg));
-	ifi->ifi_family = AF_UNSPEC;
-
-	if (mnl_socket_sendto(_socket.get(), nlh, nlh->nlmsg_len) < 0)
-		return _log.fail(EINVAL, "Failed to send link request: {}", strerror(errno));
 	*/
 
-	auto nlh = mnl_nlmsg_put_header(_buf.data());
-	nlh->nlmsg_type = RTM_GETROUTE;
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-	nlh->nlmsg_seq = 0;
-	auto rtm = (struct rtmsg *) mnl_nlmsg_put_extra_header(nlh, sizeof(struct rtmsg));
-	rtm->rtm_family = AF_INET;
-
-	if (mnl_socket_sendto(_socket.get(), nlh, nlh->nlmsg_len) < 0)
-		return _log.fail(EINVAL, "Failed to send route request: {}", strerror(errno));
-
-	//portid = mnl_socket_get_portid(nl);
+	_dump = Dump::Init;
+	if (_request())
+		return _log.fail(EINVAL, "Failed to request link dump");
 
 	_update_dcaps(dcaps::CPOLLIN);
 
+	return 0;
+}
+
+int NetLink::_request()
+{
+	if (_dump == Dump::Done)
+		return 0;
+	_dump = static_cast<Dump>(static_cast<int>(_dump) + 1);
+
+	auto req = mnl_nlmsg_put_header(_buf.data());
+	req->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+	req->nlmsg_seq = 0;
+
+	if (_dump == Dump::Link) {
+		req->nlmsg_type = RTM_GETLINK;
+		mnl_nlmsg_put_extra_header(req, sizeof(struct ifinfomsg));
+	} else if (_dump == Dump::Addr) {
+		req->nlmsg_type = RTM_GETADDR;
+		auto ifi = (struct ifaddrmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct ifaddrmsg));
+		ifi->ifa_family = AF_UNSPEC;
+	} else if (_dump == Dump::Route) {
+		req->nlmsg_type = RTM_GETROUTE;
+		auto rtm = (struct rtmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct rtmsg));
+		rtm->rtm_family = AF_UNSPEC; //AF_INET;
+	} else if (_dump == Dump::Done)
+		return 0;
+
+	if (mnl_socket_sendto(_socket.get(), req, req->nlmsg_len) < 0)
+		return _log.fail(EINVAL, "Failed to send route request: {}", strerror(errno));
 	return 0;
 }
 
@@ -145,7 +159,8 @@ int NetLink::_close()
 
 int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
 {
-	switch(nlh->nlmsg_type) {
+	_log.trace("Netlink message: {}", nlh->nlmsg_type);
+	switch (nlh->nlmsg_type) {
 	case NLMSG_DONE:
 		return MNL_CB_STOP;
 	case NLMSG_ERROR: {
@@ -164,9 +179,14 @@ int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
 			return _log.fail(MNL_CB_ERROR, "Unknown route family: {}", rm->rtm_family);
 		}
 	}
+	case RTM_NEWADDR:
+	case RTM_DELADDR:
+		return _addr(nlh);
+
 	case RTM_NEWLINK:
 	case RTM_DELLINK:
 		return _link(nlh);
+
 	default:
 		_log.debug("Unknown netlink message: {}", nlh->nlmsg_type);
 	}
@@ -304,6 +324,50 @@ int NetLink::_route_attr(const struct nlattr * attr, T & msg)
 	return MNL_CB_OK;
 }
 
+int NetLink::_addr(const struct nlmsghdr * nlh)
+{
+	auto ifa = static_cast<const struct ifaddrmsg *>(mnl_nlmsg_get_payload(nlh));
+
+	netlink_scheme::Addr msg = {};
+
+	if (ifa->ifa_family != AF_INET)
+		return MNL_CB_OK;
+
+	if (nlh->nlmsg_type == RTM_NEWADDR) {
+		msg.action = netlink_scheme::Action::New;
+	} else {
+		msg.action = netlink_scheme::Action::Delete;
+	}
+
+	msg.index = ifa->ifa_index;
+	msg.prefix = ifa->ifa_prefixlen;
+
+	auto it = _ifmap.find(ifa->ifa_index);
+	if (it == _ifmap.end())
+		return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", ifa->ifa_index);
+	msg.name = it->second;
+
+	std::pair<NetLink *, netlink_scheme::Addr *> data = { this, &msg };
+	mnl_attr_parse(nlh, sizeof(*ifa), [](auto * attr, void * data) {
+		auto pair = static_cast<std::pair<NetLink *, netlink_scheme::Addr *> *>(data);
+		if (mnl_attr_get_type(attr) != IFA_ADDRESS)
+			return MNL_CB_OK;
+		if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
+			return MNL_CB_ERROR;
+		memcpy(&pair->second->addr, mnl_attr_get_str(attr), sizeof(pair->second->addr));
+		return MNL_CB_OK;
+	}, &data);
+
+	tll_msg_t message = {};
+	message.msgid = netlink_scheme::tll_message_info<netlink_scheme::Addr>::id;
+	message.data = &msg;
+	message.size = sizeof(msg);
+
+	_callback_data(&message);
+
+	return MNL_CB_OK;
+}
+
 int NetLink::_process(long timeout, int flags)
 {
 	int len = mnl_socket_recvfrom(_socket.get(), _buf.data(), _buf.size());
@@ -313,11 +377,10 @@ int NetLink::_process(long timeout, int flags)
 		return _log.fail(EINVAL, "Failed to recv netlink message: {}", strerror(errno));
 	}
 
-	//r = mnl_cb_run(_buf.data(), r, 0, 0, [](auto * hdr, void * user) { return static_cast<NetLink *>(user)->_netlink_cb(hdr); }, this);
-
 	auto nlh = static_cast<const struct nlmsghdr *>((void *) _buf.data());
 
 	int r = 0;
+	bool done = false;
 	while (mnl_nlmsg_ok(nlh, len)) {
 		if (nlh->nlmsg_flags & NLM_F_DUMP_INTR)
 			return _log.fail(EINTR, "Netlink dump was interrupted");
@@ -325,21 +388,16 @@ int NetLink::_process(long timeout, int flags)
 		r = _netlink_cb(nlh);
 		if (r == MNL_CB_ERROR)
 			return _log.fail(EINVAL, "Failed to handle netlink message {}", nlh->nlmsg_type);
-		else if (r == MNL_CB_STOP)
+		else if (r == MNL_CB_STOP) {
 			_log.info("Dump completed");
+			done = true;
+		}
 
 		nlh = mnl_nlmsg_next(nlh, &len);
 	}
 
-	/*
-	if (r == MNL_CB_ERROR) {
-		return _log.fail(EINVAL, "Failed to run netlink callbacks: {}", strerror(errno));
-	} else if (r == MNL_CB_STOP) {
-		_log.debug("Data processed, close channel");
-		//close();
-	}
-	*/
-
+	if (done)
+		return _request();
 	return 0;
 }
 

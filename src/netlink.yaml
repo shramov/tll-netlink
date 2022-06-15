@@ -41,3 +41,14 @@
     - {name: dst, type: ipv6}
     - {name: src_mask, type: uint8}
     - {name: src, type: ipv6}
+
+- name: Addr
+  id: 40
+  unions:
+    AddrUnion: {union: [{name: ipv4, type: ipv4}, {name: ipv6, type: ipv6}]}
+  fields:
+    - {name: action, type: Action}
+    - {name: index, type: int32}
+    - {name: name, type: interface}
+    - {name: prefix, type: uint8}
+    - {name: addr, type: ipv4}
