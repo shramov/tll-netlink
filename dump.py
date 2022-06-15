@@ -11,7 +11,7 @@ from tll.error import TLLError
 ctx = Context()
 ctx.load(os.path.join(os.environ.get("BUILD_DIR", "build"), "tll-netlink"), 'channel_module')
 
-c = ctx.Channel(f'netlink://', name='netlink', dump='scheme', scheme='yaml://src/netlink.yaml')
+c = ctx.Channel(f'netlink://', name='netlink', dump='scheme')
 c.open()
 
 while True:
