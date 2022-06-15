@@ -2,7 +2,7 @@ Source: tll-netlink
 Section: devel
 Priority: optional
 Maintainer: Pavel Shramov <shramov@mexmat.net>
-Build-Depends: debhelper (>= 12), meson, cmake, pkg-config,
+Build-Depends: debhelper (>= 12), meson (>= 0.53), cmake, pkg-config,
     libfmt-dev (>= 5.3), libmnl-dev, libtll-dev, python3-tll,
 Standards-Version: 4.6.1
 Vcs-Git: https://github.com/shramov/tll-netlink

@@ -1,4 +1,4 @@
-project('tll-netlink', 'c', 'cpp', version: '0.0.0', default_options: ['cpp_std=c++17', 'werror=true', 'optimization=2'])
+project('tll-netlink', 'c', 'cpp', version: '0.0.0', default_options: ['cpp_std=c++17', 'werror=true', 'optimization=2'], meson_version: '>= 0.53')
 
 include = [include_directories('src')]
 
@@ -6,7 +6,7 @@ tll = dependency('tll')
 fmt = dependency('fmt')
 mnl = dependency('libmnl')
 
-schemegen = find_program('tll-schemegen', dirs: [tll.get_variable('prefix') / 'python'])
+schemegen = find_program('tll-schemegen', dirs: [tll.get_pkgconfig_variable('prefix') / 'python'])
 
 scheme_header = custom_target(
     'netlink.h',
