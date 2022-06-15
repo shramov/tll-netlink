@@ -6,8 +6,19 @@ tll = dependency('tll')
 fmt = dependency('fmt')
 mnl = dependency('libmnl')
 
+schemegen = find_program('tll-schemegen', dirs: [tll.get_variable('prefix') / 'python'])
+
+scheme_header = custom_target(
+    'netlink.h',
+    output : 'netlink.h',
+    input : 'src/netlink.yaml',
+    command : [schemegen, '--format=cpp', '--namespace=netlink_scheme', '@INPUT@', '-o', '@OUTPUT@'],
+    install : true,
+    install_dir : 'include/tll'
+)
+
 lib = shared_library('tll-netlink',
-	['src/channel.cc'],
+	['src/channel.cc', scheme_header],
 	include_directories : include,
 	dependencies : [fmt, mnl, tll],
 	install : true,
