@@ -258,8 +258,8 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 
 	tll_msg_t msg = {};
 	msg.msgid = link.meta_id();
-	msg.data = _buf_send.data();
-	msg.size = _buf_send.size();
+	msg.data = link.view().data();
+	msg.size = link.view().size();
 
 	_callback_data(&msg);
 
@@ -286,8 +286,8 @@ int NetLink::_route(const struct nlmsghdr * nlh, const struct rtmsg * rm)
 
 	tll_msg_t message = {};
 	message.msgid = msg.meta_id();
-	message.data = _buf_send.data();
-	message.size = _buf_send.size();
+	message.data = msg.view().data();
+	message.size = msg.view().size();
 
 	_callback_data(&message);
 
@@ -367,8 +367,8 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 
 	tll_msg_t message = {};
 	message.msgid = msg.meta_id();
-	message.data = _buf_send.data();
-	message.size = _buf_send.size();
+	message.data = msg.view().data();
+	message.size = msg.view().size();
 
 	_callback_data(&message);
 
