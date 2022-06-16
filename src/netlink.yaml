@@ -5,16 +5,16 @@
       type: int8
       enum: {UNSPEC: 0, UNICAST: 1, LOCAL: 2, BROADCAST: 3, ANYCAST: 4, MULTICAST: 5, BLACKHOLE: 6, UNREACHABLE: 7, PROHIBIT: 8, THROW: 9, NAT: 10, XRESOLVE: 11, MAX: 12}
   aliases:
-    - {name: ipv4, type: uint32}
-    - {name: ipv6, type: byte16}
-    - {name: interface, type: byte16, options.type: string}
+    - {name: IPv4, type: uint32}
+    - {name: IPv6, type: byte16}
+    - {name: Interface, type: byte16, options.type: string}
 
 - name: Link
   id: 10
   fields:
     - {name: action, type: Action}
     - {name: index, type: int32}
-    - {name: name, type: interface}
+    - {name: name, type: Interface}
     #- {name: flags, type: uint32}
     - {name: up, type: uint8}
 
@@ -24,11 +24,11 @@
     - {name: action, type: Action}
     - {name: table, type: uint32}
     - {name: type, type: RType}
-    - {name: oif, type: interface}
+    - {name: oif, type: Interface}
     - {name: dst_mask, type: uint8}
-    - {name: dst, type: ipv4}
+    - {name: dst, type: IPv4}
     - {name: src_mask, type: uint8}
-    - {name: src, type: ipv4}
+    - {name: src, type: IPv4}
 
 - name: Route6
   id: 30
@@ -36,19 +36,19 @@
     - {name: action, type: Action}
     - {name: table, type: uint32}
     - {name: type, type: RType}
-    - {name: oif, type: interface}
+    - {name: oif, type: Interface}
     - {name: dst_mask, type: uint8}
-    - {name: dst, type: ipv6}
+    - {name: dst, type: IPv6}
     - {name: src_mask, type: uint8}
-    - {name: src, type: ipv6}
+    - {name: src, type: IPv6}
 
 - name: Addr
   id: 40
   unions:
-    AddrUnion: {union: [{name: ipv4, type: ipv4}, {name: ipv6, type: ipv6}]}
+    IPAny: {union: [{name: ipv4, type: IPv4}, {name: ipv6, type: IPv6}]}
   fields:
     - {name: action, type: Action}
     - {name: index, type: int32}
-    - {name: name, type: interface}
+    - {name: name, type: Interface}
     - {name: prefix, type: uint8}
-    - {name: addr, type: ipv4}
+    - {name: addr, type: IPAny}

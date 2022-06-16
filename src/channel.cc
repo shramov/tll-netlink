@@ -234,7 +234,7 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	*/
 
 	auto link = tll::scheme::make_binder<netlink_scheme::Link>(_buf_send);
-	_buf_send.resize(link.meta_size());
+	link.view().resize(link.meta_size());
 
 	//netlink_scheme::Link link = {};
 	link.set_index(ifi->ifi_index);
@@ -270,7 +270,7 @@ template <template <typename B> typename T>
 int NetLink::_route(const struct nlmsghdr * nlh, const struct rtmsg * rm)
 {
 	auto msg = tll::scheme::make_binder<T>(_buf_send);
-	_buf_send.resize(msg.meta_size());
+	msg.view().resize(msg.meta_size());
 
 	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWROUTE));
 	msg.set_table(rm->rtm_table);
@@ -340,10 +340,7 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 	auto ifa = static_cast<const struct ifaddrmsg *>(mnl_nlmsg_get_payload(nlh));
 
 	auto msg = tll::scheme::make_binder<netlink_scheme::Addr>(_buf_send);
-	_buf_send.resize(msg.meta_size());
-
-	if (ifa->ifa_family != AF_INET)
-		return MNL_CB_OK;
+	msg.view().resize(msg.meta_size());
 
 	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWADDR));
 	msg.set_index(ifa->ifa_index);
@@ -354,16 +351,25 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 		return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", ifa->ifa_index);
 	msg.set_name(it->second);
 
-	auto data = std::make_pair(ifa, &msg);
-	mnl_attr_parse(nlh, sizeof(*ifa), [](auto * attr, void * data) {
-		auto pair = static_cast<std::pair<decltype(ifa), decltype(msg) *> *>(data);
+	// Macro not C++ compatible, implicit cast from void *
+	auto attr = (const struct nlattr *) mnl_nlmsg_get_payload_offset(nlh, sizeof(*ifa));
+	auto tail = (const char *) mnl_nlmsg_get_payload_tail(nlh);
+	for (; mnl_attr_ok(attr, tail - (char *)(attr)); attr = mnl_attr_next(attr)) {
 		if (mnl_attr_get_type(attr) != IFA_ADDRESS)
-			return MNL_CB_OK;
-		if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
-			return MNL_CB_ERROR;
-		pair->second->set_addr(mnl_attr_get_u32(attr));
-		return MNL_CB_OK;
-	}, &data);
+			continue;
+		if (ifa->ifa_family == AF_INET) {
+			if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
+				return _log.fail(EINVAL, "Invalid IFA_ADDRESS ipv4 attribute: {}", strerror(errno));
+			msg.get_addr().set_ipv4(mnl_attr_get_u32(attr));
+		} else if (ifa->ifa_family == AF_INET6) {
+			if (mnl_attr_validate2(attr, MNL_TYPE_BINARY, sizeof(struct in6_addr)) < 0)
+				return _log.fail(EINVAL, "Invalid IFA_ADDRESS ipv6 attribute: {}", strerror(errno));
+			std::string_view addr = {(const char *) mnl_attr_get_payload(attr), sizeof(struct in6_addr)};
+			msg.get_addr().set_ipv6(addr);
+		} else
+			return _log.fail(EINVAL, "Unknow address family: {}", ifa->ifa_family);
+		break;
+	}
 
 	tll_msg_t message = {};
 	message.msgid = msg.meta_id();
