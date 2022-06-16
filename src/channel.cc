@@ -23,12 +23,23 @@ struct mnl_socket_delete { void operator ()(struct mnl_socket *ptr) const { mnl_
 
 using mnl_ptr_t = std::unique_ptr<struct mnl_socket, mnl_socket_delete>;
 
+namespace {
+netlink_scheme::Action action_new(bool v)
+{
+	if (v)
+		return netlink_scheme::Action::New;
+	else
+		return netlink_scheme::Action::Delete;
+}
+}
+
 using namespace tll;
 
 class NetLink : public tll::channel::Base<NetLink>
 {
 	mnl_ptr_t _socket;
 	std::vector<char> _buf;
+	std::vector<char> _buf_send;
 	std::map<int, std::string> _ifmap;
 
 	enum class Dump { Init, Link, Route, Addr, Done } _dump = Dump::Init;
@@ -53,7 +64,7 @@ class NetLink : public tll::channel::Base<NetLink>
 	int _link(const struct nlmsghdr *nlh);
 	int _addr(const struct nlmsghdr *nlh);
 
-	template <typename T>
+	template <template <typename B> typename T>
 	int _route(const struct nlmsghdr *nlh, const struct rtmsg * rm);
 
 	template <typename T>
@@ -222,11 +233,14 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	printf("\n");
 	*/
 
-	netlink_scheme::Link link = {};
-	link.index = ifi->ifi_index;
-	link.name = name;
-	link.action = nlh->nlmsg_type == RTM_NEWLINK ? netlink_scheme::Action::New : netlink_scheme::Action::Delete;
-	link.up = (ifi->ifi_flags & IFF_UP) ? 1 : 0;
+	auto link = tll::scheme::make_binder<netlink_scheme::Link>(_buf_send);
+	_buf_send.resize(link.meta_size());
+
+	//netlink_scheme::Link link = {};
+	link.set_index(ifi->ifi_index);
+	link.set_name(name);
+	link.set_action(action_new(nlh->nlmsg_type == RTM_NEWLINK));
+	link.set_up((ifi->ifi_flags & IFF_UP) ? 1 : 0);
 
 	auto it = _ifmap.find(ifi->ifi_index);
 	if (nlh->nlmsg_type == RTM_NEWLINK) {
@@ -243,41 +257,37 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	}
 
 	tll_msg_t msg = {};
-	msg.msgid = netlink_scheme::tll_message_info<netlink_scheme::Link>::id;
-	msg.data = &link;
-	msg.size = sizeof(link);
+	msg.msgid = link.meta_id();
+	msg.data = _buf_send.data();
+	msg.size = _buf_send.size();
 
 	_callback_data(&msg);
 
 	return MNL_CB_OK;
 }
 
-template <typename T>
+template <template <typename B> typename T>
 int NetLink::_route(const struct nlmsghdr * nlh, const struct rtmsg * rm)
 {
-	T msg = {};
+	auto msg = tll::scheme::make_binder<T>(_buf_send);
+	_buf_send.resize(msg.meta_size());
 
-	if (nlh->nlmsg_type == RTM_NEWROUTE) {
-		msg.action = netlink_scheme::Action::New;
-	} else {
-		msg.action = netlink_scheme::Action::Delete;
-	}
+	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWROUTE));
+	msg.set_table(rm->rtm_table);
+	msg.set_type(static_cast<netlink_scheme::RType>(rm->rtm_type));
+	msg.set_dst_mask(rm->rtm_dst_len);
+	msg.set_src_mask(rm->rtm_src_len);
 
-	msg.table = rm->rtm_table;
-	msg.type = static_cast<netlink_scheme::RType>(rm->rtm_type);
-	msg.dst_mask = rm->rtm_dst_len;
-	msg.src_mask = rm->rtm_src_len;
-
-	std::pair<NetLink *, T *> data = { this, &msg };
+	auto data = std::make_pair(this, &msg);
 	mnl_attr_parse(nlh, sizeof(*rm), [](auto * attr, void * data) {
-		auto pair = static_cast<std::pair<NetLink *, T *> *>(data);
+		auto pair = static_cast<std::pair<NetLink *, decltype(msg) *> *>(data);
 		return pair->first->_route_attr(attr, *pair->second);
 	}, &data);
 
 	tll_msg_t message = {};
-	message.msgid = netlink_scheme::tll_message_info<T>::id;
-	message.data = &msg;
-	message.size = sizeof(msg);
+	message.msgid = msg.meta_id();
+	message.data = _buf_send.data();
+	message.size = _buf_send.size();
 
 	_callback_data(&message);
 
@@ -297,27 +307,28 @@ int NetLink::_route_attr(const struct nlattr * attr, T & msg)
 		auto it = _ifmap.find(oif);
 		if (it == _ifmap.end())
 			return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", oif);
-		msg.oif = it->second;
+		msg.set_oif(it->second);
 		break;
 	}
 	case RTA_DST:
 	case RTA_SRC:
-		if constexpr (sizeof(msg.dst) == 4) {
+		if constexpr (sizeof(msg.get_dst()) == 4) {
 			if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
 				return _log.fail(MNL_CB_ERROR, "Invalid type for ipv4 addr: not u32");
 			auto addr = mnl_attr_get_u32(attr);
 			if (type == RTA_DST)
-				msg.dst = addr;
+				msg.set_dst(addr);
 			else
-				msg.src = addr;
+				msg.set_src(addr);
 		} else {
 			if (mnl_attr_validate2(attr, MNL_TYPE_BINARY, sizeof(struct in6_addr)) < 0)
 				return _log.fail(MNL_CB_ERROR, "Invalid type for ipv6 addr: not in6_addr");
-			auto addr = static_cast<struct in6_addr *>(mnl_attr_get_payload(attr));
+			//auto addr = static_cast<struct in6_addr *>(mnl_attr_get_payload(attr));
+			std::string_view addr = {(const char *) mnl_attr_get_payload(attr), sizeof(struct in6_addr)};
 			if (type == RTA_DST)
-				memcpy(msg.dst.data(), addr, sizeof(*addr));
+				msg.set_dst(addr);
 			else
-				memcpy(msg.src.data(), addr, sizeof(*addr));
+				msg.set_src(addr);
 		}
 		break;
 	}
@@ -328,40 +339,36 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 {
 	auto ifa = static_cast<const struct ifaddrmsg *>(mnl_nlmsg_get_payload(nlh));
 
-	netlink_scheme::Addr msg = {};
+	auto msg = tll::scheme::make_binder<netlink_scheme::Addr>(_buf_send);
+	_buf_send.resize(msg.meta_size());
 
 	if (ifa->ifa_family != AF_INET)
 		return MNL_CB_OK;
 
-	if (nlh->nlmsg_type == RTM_NEWADDR) {
-		msg.action = netlink_scheme::Action::New;
-	} else {
-		msg.action = netlink_scheme::Action::Delete;
-	}
-
-	msg.index = ifa->ifa_index;
-	msg.prefix = ifa->ifa_prefixlen;
+	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWADDR));
+	msg.set_index(ifa->ifa_index);
+	msg.set_prefix(ifa->ifa_prefixlen);
 
 	auto it = _ifmap.find(ifa->ifa_index);
 	if (it == _ifmap.end())
 		return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", ifa->ifa_index);
-	msg.name = it->second;
+	msg.set_name(it->second);
 
-	std::pair<NetLink *, netlink_scheme::Addr *> data = { this, &msg };
+	auto data = std::make_pair(ifa, &msg);
 	mnl_attr_parse(nlh, sizeof(*ifa), [](auto * attr, void * data) {
-		auto pair = static_cast<std::pair<NetLink *, netlink_scheme::Addr *> *>(data);
+		auto pair = static_cast<std::pair<decltype(ifa), decltype(msg) *> *>(data);
 		if (mnl_attr_get_type(attr) != IFA_ADDRESS)
 			return MNL_CB_OK;
-		if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
+		if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
 			return MNL_CB_ERROR;
-		memcpy(&pair->second->addr, mnl_attr_get_str(attr), sizeof(pair->second->addr));
+		pair->second->set_addr(mnl_attr_get_u32(attr));
 		return MNL_CB_OK;
 	}, &data);
 
 	tll_msg_t message = {};
-	message.msgid = netlink_scheme::tll_message_info<netlink_scheme::Addr>::id;
-	message.data = &msg;
-	message.size = sizeof(msg);
+	message.msgid = msg.meta_id();
+	message.data = _buf_send.data();
+	message.size = _buf_send.size();
 
 	_callback_data(&message);
 

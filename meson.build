@@ -12,7 +12,7 @@ scheme_header = custom_target(
     'netlink.h',
     output : 'netlink.h',
     input : 'src/netlink.yaml',
-    command : [schemegen, '--format=cpp', '--namespace=netlink_scheme', '@INPUT@', '-o', '@OUTPUT@'],
+    command : [schemegen, '--format=cpp-binder', '--namespace=netlink_scheme', '@INPUT@', '-o', '@OUTPUT@'],
     install : true,
     install_dir : 'include/tll'
 )
