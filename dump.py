@@ -14,7 +14,7 @@ ctx.load(os.path.join(os.environ.get("BUILD_DIR", "build"), "tll-netlink"), 'cha
 
 loop = Loop()
 
-c = ctx.Channel(f'netlink://', name='netlink', dump='scheme')
+c = ctx.Channel(f'netlink://', name='netlink', dump='scheme', route='yes', addr='yes', af='any')
 c.open()
 loop.add(c)
 

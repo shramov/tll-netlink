@@ -43,6 +43,9 @@ class NetLink : public tll::channel::Base<NetLink>
 	std::map<int, std::string> _ifmap;
 
 	enum class Dump { Init, Link, Route, Addr, Done } _dump = Dump::Init;
+	bool _request_addr:1;
+	bool _request_route:1;
+	int _af = AF_UNSPEC;
 
 	int _request();
 
@@ -89,12 +92,10 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 
 	auto reader = channel_props_reader(url);
 
-	/*
-	_replace = reader.getT("replace", false);
-	_seq_index = reader.getT("seq-index", Index::Unique, {{"no", Index::No}, {"yes", Index::Yes}, {"unique", Index::Unique}});
-	_journal = reader.getT("journal", Journal::Wal, {{"wal", Journal::Wal}, {"default", Journal::Default}});
-	_bulk_size = reader.getT("bulk-size", 0u);
-	*/
+	_request_addr = reader.getT("addr", true);
+	_request_route = reader.getT("route", true);
+	_af = reader.getT("af", AF_UNSPEC, {{"ipv4", AF_INET}, {"ipv6", AF_INET6}, {"any", AF_UNSPEC}});
+
 	if (!reader)
 		return _log.fail(EINVAL, "Invalid url: {}", reader.error());
 
@@ -107,7 +108,17 @@ int NetLink::_open(const tll::ConstConfig &s)
 	if (!_socket)
 		return _log.fail(EINVAL, "Failed to open netlink socket: {}", strerror(errno));
 
-	if (mnl_socket_bind(_socket.get(), RTMGRP_LINK | RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR, MNL_SOCKET_AUTOPID) < 0)
+	unsigned groups = RTMGRP_LINK;
+	if (_request_addr) {
+		if (_af == AF_UNSPEC || _af == AF_INET)  groups |= RTMGRP_IPV4_IFADDR;
+		if (_af == AF_UNSPEC || _af == AF_INET6) groups |= RTMGRP_IPV6_IFADDR;
+	}
+	if (_request_route) {
+		if (_af == AF_UNSPEC || _af == AF_INET)  groups |= RTMGRP_IPV4_ROUTE;
+		if (_af == AF_UNSPEC || _af == AF_INET6) groups |= RTMGRP_IPV6_ROUTE;
+	}
+
+	if (mnl_socket_bind(_socket.get(), groups, MNL_SOCKET_AUTOPID) < 0)
 		return _log.fail(EINVAL, "Failed to bind netlink socket: {}", strerror(errno));
 
 	_update_fd(mnl_socket_get_fd(_socket.get()));
@@ -134,9 +145,22 @@ int NetLink::_open(const tll::ConstConfig &s)
 
 int NetLink::_request()
 {
-	if (_dump == Dump::Done)
+	switch (_dump) {
+	case Dump::Done:
 		return 0;
-	_dump = static_cast<Dump>(static_cast<int>(_dump) + 1);
+	case Dump::Init:
+		_dump = Dump::Link; break;
+	case Dump::Link:
+		_dump = Dump::Addr;
+		if (_request_addr) break;
+	case Dump::Addr:
+		_dump = Dump::Route;
+		if (_request_route) break;
+	case Dump::Route:
+		_dump = Dump::Done;
+	default:
+		return 0;
+	}
 
 	auto req = mnl_nlmsg_put_header(_buf.data());
 	req->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
@@ -148,13 +172,12 @@ int NetLink::_request()
 	} else if (_dump == Dump::Addr) {
 		req->nlmsg_type = RTM_GETADDR;
 		auto ifi = (struct ifaddrmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct ifaddrmsg));
-		ifi->ifa_family = AF_UNSPEC;
+		ifi->ifa_family = _af;
 	} else if (_dump == Dump::Route) {
 		req->nlmsg_type = RTM_GETROUTE;
 		auto rtm = (struct rtmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct rtmsg));
-		rtm->rtm_family = AF_UNSPEC; //AF_INET;
-	} else if (_dump == Dump::Done)
-		return 0;
+		rtm->rtm_family = _af;
+	}
 
 	if (mnl_socket_sendto(_socket.get(), req, req->nlmsg_len) < 0)
 		return _log.fail(EINVAL, "Failed to send route request: {}", strerror(errno));
