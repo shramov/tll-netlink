@@ -17,6 +17,18 @@
 
 #include "netlink.h"
 
+#undef mnl_attr_for_each
+#define mnl_attr_for_each(attr, nlh, offset) \
+	for ((attr) = (struct nlattr *) mnl_nlmsg_get_payload_offset((nlh), (offset)); \
+	     mnl_attr_ok((attr), (char *)mnl_nlmsg_get_payload_tail(nlh) - (char *)(attr)); \
+	     (attr) = mnl_attr_next(attr))
+
+#undef mnl_attr_for_each_nested
+#define mnl_attr_for_each_nested(attr, nest) \
+	for ((attr) = (struct nlattr *) mnl_attr_get_payload(nest); \
+	     mnl_attr_ok((attr), (char *)mnl_attr_get_payload(nest) + mnl_attr_get_payload_len(nest) - (char *)(attr)); \
+	     (attr) = mnl_attr_next(attr))
+
 // clang-format off
 struct mnl_socket_delete { void operator ()(struct mnl_socket *ptr) const { mnl_socket_close(ptr); } };
 // clang-format on
@@ -233,28 +245,14 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 
 	std::string_view name;
 
-	mnl_attr_parse(nlh, sizeof(*ifi), [](auto * attr, void * user) {
+	const struct nlattr * attr;
+	mnl_attr_for_each(attr, nlh, sizeof(*ifi)) {
 		if (mnl_attr_get_type(attr) != IFLA_IFNAME)
 			return MNL_CB_OK;
 		if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
 			return MNL_CB_ERROR;
-		*static_cast<std::string_view *>(user) = mnl_attr_get_str(attr);
-		return MNL_CB_OK;
-	}, &name);
-
-	/*
-	if (nlh->nlmsg_type == RTM_NEWLINK)
-		printf("[LINK] [NEW] ");
-	else
-		printf("[LINK] [DEL] ");
-
-	printf("family=%u ", ifi->ifi_family);
-	printf("type=%u ", ifi->ifi_type);
-	printf("index=%d ", ifi->ifi_index);
-	printf("flags=0x%x ", ifi->ifi_flags);
-	printf("name=%s ", name.data());
-	printf("\n");
-	*/
+		name = mnl_attr_get_str(attr);
+	}
 
 	auto link = tll::scheme::make_binder<netlink_scheme::Link>(_buf_send);
 	link.view().resize(link.meta_size());
@@ -374,10 +372,8 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 		return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", ifa->ifa_index);
 	msg.set_name(it->second);
 
-	// Macro not C++ compatible, implicit cast from void *
-	auto attr = (const struct nlattr *) mnl_nlmsg_get_payload_offset(nlh, sizeof(*ifa));
-	auto tail = (const char *) mnl_nlmsg_get_payload_tail(nlh);
-	for (; mnl_attr_ok(attr, tail - (char *)(attr)); attr = mnl_attr_next(attr)) {
+	const struct nlattr * attr;
+	mnl_attr_for_each(attr, nlh, sizeof(*ifa)) {
 		if (mnl_attr_get_type(attr) != IFA_ADDRESS)
 			continue;
 		if (ifa->ifa_family == AF_INET) {
