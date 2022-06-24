@@ -43,6 +43,22 @@ netlink_scheme::Action action_new(bool v)
 	else
 		return netlink_scheme::Action::Delete;
 }
+
+template <typename Buf>
+tll::result_t<int> addr_fill(netlink_scheme::IPAny<Buf> addr, int af, const nlattr *attr)
+{
+	if (af == AF_INET) {
+		if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
+			return tll::error("Invalid ipv4 attribute");
+		addr.set_ipv4(mnl_attr_get_u32(attr));
+	} else if (af == AF_INET6) {
+		if (mnl_attr_validate2(attr, MNL_TYPE_BINARY, sizeof(struct in6_addr)) < 0)
+			return tll::error("Invalid ipv6 attribute");
+		addr.set_ipv6({mnl_attr_get_str(attr), sizeof(struct in6_addr)});
+	} else
+		return tll::error(fmt::format("Unknow address family: {}", af));
+	return 0;
+}
 }
 
 using namespace tll;
@@ -54,9 +70,10 @@ class NetLink : public tll::channel::Base<NetLink>
 	std::vector<char> _buf_send;
 	std::map<int, std::string> _ifmap;
 
-	enum class Dump { Init, Link, Route, Addr, Done } _dump = Dump::Init;
+	enum class Dump { Init, Link, Route, Addr, Neigh, Done } _dump = Dump::Init;
 	bool _request_addr:1;
 	bool _request_route:1;
+	bool _request_neigh:1;
 	int _af = AF_UNSPEC;
 
 	int _request();
@@ -78,6 +95,7 @@ class NetLink : public tll::channel::Base<NetLink>
 	int _netlink_cb(const struct nlmsghdr *nlh);
 	int _link(const struct nlmsghdr *nlh);
 	int _addr(const struct nlmsghdr *nlh);
+	int _neigh(const struct nlmsghdr *nlh);
 
 	template <template <typename B> typename T>
 	int _route(const struct nlmsghdr *nlh, const struct rtmsg * rm);
@@ -106,6 +124,7 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 
 	_request_addr = reader.getT("addr", true);
 	_request_route = reader.getT("route", true);
+	_request_neigh = reader.getT("neigh", true);
 	_af = reader.getT("af", AF_UNSPEC, {{"ipv4", AF_INET}, {"ipv6", AF_INET6}, {"any", AF_UNSPEC}});
 
 	if (!reader)
@@ -129,6 +148,8 @@ int NetLink::_open(const tll::ConstConfig &s)
 		if (_af == AF_UNSPEC || _af == AF_INET)  groups |= RTMGRP_IPV4_ROUTE;
 		if (_af == AF_UNSPEC || _af == AF_INET6) groups |= RTMGRP_IPV6_ROUTE;
 	}
+	if (_request_neigh)
+		groups |= RTMGRP_NEIGH;
 
 	if (mnl_socket_bind(_socket.get(), groups, MNL_SOCKET_AUTOPID) < 0)
 		return _log.fail(EINVAL, "Failed to bind netlink socket: {}", strerror(errno));
@@ -169,6 +190,9 @@ int NetLink::_request()
 		_dump = Dump::Route;
 		if (_request_route) break;
 	case Dump::Route:
+		_dump = Dump::Neigh;
+		if (_request_neigh) break;
+	case Dump::Neigh:
 		_dump = Dump::Done;
 	default:
 		return 0;
@@ -189,6 +213,10 @@ int NetLink::_request()
 		req->nlmsg_type = RTM_GETROUTE;
 		auto rtm = (struct rtmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct rtmsg));
 		rtm->rtm_family = _af;
+	} else if (_dump == Dump::Neigh) {
+		req->nlmsg_type = RTM_GETNEIGH;
+		auto ndm = (struct ndmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct ndmsg));
+		ndm->ndm_family = _af;
 	}
 
 	if (mnl_socket_sendto(_socket.get(), req, req->nlmsg_len) < 0)
@@ -232,6 +260,10 @@ int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
 	case RTM_NEWLINK:
 	case RTM_DELLINK:
 		return _link(nlh);
+
+	case RTM_NEWNEIGH:
+	case RTM_DELNEIGH:
+		return _neigh(nlh);
 
 	default:
 		_log.debug("Unknown netlink message: {}", nlh->nlmsg_type);
@@ -281,6 +313,51 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	msg.msgid = link.meta_id();
 	msg.data = link.view().data();
 	msg.size = link.view().size();
+
+	_callback_data(&msg);
+
+	return MNL_CB_OK;
+}
+
+int NetLink::_neigh(const struct nlmsghdr * nlh)
+{
+	auto ndm = static_cast<struct ndmsg *>(mnl_nlmsg_get_payload(nlh));
+
+	auto it = _ifmap.find(ndm->ndm_ifindex);
+	if (it == _ifmap.end())
+		return _log.fail(MNL_CB_ERROR, "Unknown interface index: {}", ndm->ndm_ifindex);
+
+	std::string_view name = it->second;
+
+	_log.debug("Neigh update: {} family {}", name, ndm->ndm_family);
+
+	auto data = tll::scheme::make_binder<netlink_scheme::Neigh>(_buf_send);
+	data.view().resize(data.meta_size());
+
+	data.set_index(ndm->ndm_ifindex);
+	data.set_name(name);
+	data.set_action(action_new(nlh->nlmsg_type == RTM_NEWNEIGH));
+	data.set_state(ndm->ndm_state);
+
+	const struct nlattr * attr;
+	mnl_attr_for_each(attr, nlh, sizeof(*ndm)) {
+		switch (mnl_attr_get_type(attr)) {
+		case NDA_LLADDR:
+			data.set_lladdr({mnl_attr_get_str(attr), 6});
+			break;
+		case NDA_DST:
+			if (auto r = addr_fill(data.get_addr(), ndm->ndm_family, attr); !r)
+				return _log.fail(EINVAL, "Failed to parse NDM_DST: {}", r.error());
+			break;
+		default:
+			break;
+		}
+	}
+
+	tll_msg_t msg = {};
+	msg.msgid = data.meta_id();
+	msg.data = data.view().data();
+	msg.size = data.view().size();
 
 	_callback_data(&msg);
 
@@ -376,17 +453,8 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 	mnl_attr_for_each(attr, nlh, sizeof(*ifa)) {
 		if (mnl_attr_get_type(attr) != IFA_ADDRESS)
 			continue;
-		if (ifa->ifa_family == AF_INET) {
-			if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
-				return _log.fail(EINVAL, "Invalid IFA_ADDRESS ipv4 attribute: {}", strerror(errno));
-			msg.get_addr().set_ipv4(mnl_attr_get_u32(attr));
-		} else if (ifa->ifa_family == AF_INET6) {
-			if (mnl_attr_validate2(attr, MNL_TYPE_BINARY, sizeof(struct in6_addr)) < 0)
-				return _log.fail(EINVAL, "Invalid IFA_ADDRESS ipv6 attribute: {}", strerror(errno));
-			std::string_view addr = {(const char *) mnl_attr_get_payload(attr), sizeof(struct in6_addr)};
-			msg.get_addr().set_ipv6(addr);
-		} else
-			return _log.fail(EINVAL, "Unknow address family: {}", ifa->ifa_family);
+		if (auto r = addr_fill(msg.get_addr(), ifa->ifa_family, attr); !r)
+			return _log.fail(EINVAL, "Failed to parse IFA_ADDRESS: {}", r.error());
 		break;
 	}
 

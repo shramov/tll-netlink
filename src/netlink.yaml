@@ -4,6 +4,8 @@
     RType:
       type: int8
       enum: {UNSPEC: 0, UNICAST: 1, LOCAL: 2, BROADCAST: 3, ANYCAST: 4, MULTICAST: 5, BLACKHOLE: 6, UNREACHABLE: 7, PROHIBIT: 8, THROW: 9, NAT: 10, XRESOLVE: 11, MAX: 12}
+  unions:
+    IPAny: {union: [{name: ipv4, type: uint32}, {name: ipv6, type: byte16}]}
   aliases:
     - {name: IPv4, type: uint32}
     - {name: IPv6, type: byte16}
@@ -44,11 +46,19 @@
 
 - name: Addr
   id: 40
-  unions:
-    IPAny: {union: [{name: ipv4, type: IPv4}, {name: ipv6, type: IPv6}]}
   fields:
     - {name: action, type: Action}
     - {name: index, type: int32}
     - {name: name, type: Interface}
     - {name: prefix, type: uint8}
     - {name: addr, type: IPAny}
+
+- name: Neigh
+  id: 50
+  fields:
+    - {name: action, type: Action}
+    - {name: index, type: int32}
+    - {name: name, type: Interface}
+    - {name: state, type: uint16, options.type: bits, bits: [Incomplete, Reachable, Stale, Delay, Probe, Failed, NoArp, Permanent]}
+    - {name: addr, type: IPAny}
+    - {name: lladdr, type: byte6}
