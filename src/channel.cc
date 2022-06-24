@@ -248,9 +248,9 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	const struct nlattr * attr;
 	mnl_attr_for_each(attr, nlh, sizeof(*ifi)) {
 		if (mnl_attr_get_type(attr) != IFLA_IFNAME)
-			return MNL_CB_OK;
+			continue;
 		if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
-			return MNL_CB_ERROR;
+			return _log.fail(EINVAL, "Invalid IFLA_IFNAME attribute");;
 		name = mnl_attr_get_str(attr);
 	}
 
