@@ -277,23 +277,33 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 
 	std::string_view name;
 
-	const struct nlattr * attr;
-	mnl_attr_for_each(attr, nlh, sizeof(*ifi)) {
-		if (mnl_attr_get_type(attr) != IFLA_IFNAME)
-			continue;
-		if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
-			return _log.fail(EINVAL, "Invalid IFLA_IFNAME attribute");;
-		name = mnl_attr_get_str(attr);
-	}
-
 	auto link = tll::scheme::make_binder<netlink_scheme::Link>(_buf_send);
 	link.view_resize();
 
 	//netlink_scheme::Link link = {};
 	link.set_index(ifi->ifi_index);
-	link.set_name(name);
 	link.set_action(action_new(nlh->nlmsg_type == RTM_NEWLINK));
 	link.set_up((ifi->ifi_flags & IFF_UP) ? 1 : 0);
+	link.set_flags(ifi->ifi_flags);
+
+	const struct nlattr * attr;
+	mnl_attr_for_each(attr, nlh, sizeof(*ifi)) {
+		switch (mnl_attr_get_type(attr)) {
+		case IFLA_IFNAME:
+			if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
+				return _log.fail(EINVAL, "Invalid IFLA_IFNAME attribute");;
+			name = mnl_attr_get_str(attr);
+			break;
+		case IFLA_ADDRESS:
+			if (mnl_attr_get_payload_len(attr) == 6)
+				link.set_lladdr({mnl_attr_get_str(attr), 6});
+			break;
+		default:
+			break;
+		}
+	}
+
+	link.set_name(name);
 
 	auto it = _ifmap.find(ifi->ifi_index);
 	if (nlh->nlmsg_type == RTM_NEWLINK) {

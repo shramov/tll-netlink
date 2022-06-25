@@ -19,6 +19,8 @@
     - {name: name, type: Interface}
     #- {name: flags, type: uint32}
     - {name: up, type: uint8}
+    - {name: flags, type: uint32, options.type: bits, bits: [Up, Broadcast, Debug, Loopback, PointToPoint, NoTrailers, Running, NoArp, Promisc, AllMulti, Master, Slave, Multicast, PortSel, AutoMedia, Dynamic]}
+    - {name: lladdr, type: byte6}
 
 - name: Route4
   id: 20
