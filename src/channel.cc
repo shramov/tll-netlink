@@ -287,7 +287,7 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	}
 
 	auto link = tll::scheme::make_binder<netlink_scheme::Link>(_buf_send);
-	link.view().resize(link.meta_size());
+	link.view_resize();
 
 	//netlink_scheme::Link link = {};
 	link.set_index(ifi->ifi_index);
@@ -332,7 +332,7 @@ int NetLink::_neigh(const struct nlmsghdr * nlh)
 	_log.debug("Neigh update: {} family {}", name, ndm->ndm_family);
 
 	auto data = tll::scheme::make_binder<netlink_scheme::Neigh>(_buf_send);
-	data.view().resize(data.meta_size());
+	data.view_resize();
 
 	data.set_index(ndm->ndm_ifindex);
 	data.set_name(name);
@@ -368,7 +368,7 @@ template <template <typename B> typename T>
 int NetLink::_route(const struct nlmsghdr * nlh, const struct rtmsg * rm)
 {
 	auto msg = tll::scheme::make_binder<T>(_buf_send);
-	msg.view().resize(msg.meta_size());
+	msg.view_resize();
 
 	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWROUTE));
 	msg.set_table(rm->rtm_table);
