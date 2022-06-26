@@ -13,13 +13,15 @@
 
 - name: Link
   id: 10
+  bits:
+    Flags: {type: uint32, options.type: bits, bits: [Up, Broadcast, Debug, Loopback, PointToPoint, NoTrailers, Running, NoArp, Promisc, AllMulti, Master, Slave, Multicast, PortSel, AutoMedia, Dynamic]}
   fields:
     - {name: action, type: Action}
     - {name: index, type: int32}
     - {name: name, type: Interface}
     #- {name: flags, type: uint32}
     - {name: up, type: uint8}
-    - {name: flags, type: uint32, options.type: bits, bits: [Up, Broadcast, Debug, Loopback, PointToPoint, NoTrailers, Running, NoArp, Promisc, AllMulti, Master, Slave, Multicast, PortSel, AutoMedia, Dynamic]}
+    - {name: flags, type: Flags}
     - {name: lladdr, type: byte6}
 
 - name: Route4
@@ -57,10 +59,12 @@
 
 - name: Neigh
   id: 50
+  bits:
+    State: {type: uint16, options.type: bits, bits: [Incomplete, Reachable, Stale, Delay, Probe, Failed, NoArp, Permanent]}
   fields:
     - {name: action, type: Action}
     - {name: index, type: int32}
     - {name: name, type: Interface}
-    - {name: state, type: uint16, options.type: bits, bits: [Incomplete, Reachable, Stale, Delay, Probe, Failed, NoArp, Permanent]}
+    - {name: state, type: State}
     - {name: addr, type: IPAny}
     - {name: lladdr, type: byte6}

@@ -283,8 +283,8 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	//netlink_scheme::Link link = {};
 	link.set_index(ifi->ifi_index);
 	link.set_action(action_new(nlh->nlmsg_type == RTM_NEWLINK));
-	link.set_up((ifi->ifi_flags & IFF_UP) ? 1 : 0);
 	link.set_flags(ifi->ifi_flags);
+	link.set_up(link.get_flags().Up());
 
 	const struct nlattr * attr;
 	mnl_attr_for_each(attr, nlh, sizeof(*ifi)) {
