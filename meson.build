@@ -18,7 +18,7 @@ scheme_header = custom_target(
 )
 
 lib = shared_library('tll-netlink',
-	['src/channel.cc', scheme_header],
+	['src/channel.cc', 'src/monitor.cc', scheme_header],
 	include_directories : include,
 	dependencies : [fmt, mnl, tll],
 	install : true,

@@ -17,6 +17,8 @@
 
 #include "netlink.h"
 
+#include "monitor.h"
+
 #undef mnl_attr_for_each
 #define mnl_attr_for_each(attr, nlh, offset) \
 	for ((attr) = (struct nlattr *) mnl_nlmsg_get_payload_offset((nlh), (offset)); \
@@ -512,5 +514,6 @@ int NetLink::_process(long timeout, int flags)
 }
 
 TLL_DEFINE_IMPL(NetLink);
+TLL_DEFINE_IMPL(Monitor);
 
-TLL_DEFINE_MODULE(NetLink);
+TLL_DEFINE_MODULE(NetLink, Monitor);
