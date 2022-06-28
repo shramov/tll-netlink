@@ -16,13 +16,14 @@
   bits:
     Flags: {type: uint32, options.type: bits, bits: [Up, Broadcast, Debug, Loopback, PointToPoint, NoTrailers, Running, NoArp, Promisc, AllMulti, Master, Slave, Multicast, PortSel, AutoMedia, Dynamic]}
   fields:
+    - {name: pmap, type: uint16, options.pmap: yes}
     - {name: action, type: Action}
     - {name: index, type: int32}
     - {name: name, type: Interface}
     #- {name: flags, type: uint32}
     - {name: up, type: uint8}
     - {name: flags, type: Flags}
-    - {name: lladdr, type: byte6}
+    - {name: lladdr, type: byte6, options.optional: yes}
 
 - name: Route4
   id: 20
