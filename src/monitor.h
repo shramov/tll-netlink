@@ -49,10 +49,7 @@ public:
 		return Base::_free();
 	}
 
-	int _open(const tll::ConstConfig &params)
-	{
-		return 0;
-	}
+	int _open(const tll::ConstConfig &params);
 
 	int _close()
 	{

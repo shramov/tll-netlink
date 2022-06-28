@@ -8,8 +8,28 @@
 #include "monitor.h"
 
 #include "netlink.h"
+#include "netlink-control.h"
 
 using namespace tll;
+
+int Monitor::_open(const tll::ConstConfig &params)
+{
+	if (_master->state() != tll::state::Active)
+		return 0;
+	std::array<unsigned char, netlink_control_scheme::Dump<tll_msg_t>::meta_size()> buf;
+	auto dump = tll::scheme::make_binder<netlink_control_scheme::Dump>(buf);
+	auto v = dump.get_request();
+	v.Link(true);
+	v.Addr(true);
+	dump.set_request(v);
+	tll_msg_t msg = { TLL_MESSAGE_CONTROL };
+	msg.msgid = dump.meta_id();
+	msg.data = dump.view().data();
+	msg.size = dump.view().size();
+	if (_master->post(&msg))
+		return _log.fail(EINVAL, "Failed to post Dump request");
+	return 0;
+}
 
 int Monitor::_on_data(const tll_msg_t *msg)
 {
