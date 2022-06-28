@@ -12,10 +12,13 @@
 #include <linux/if_link.h>
 #include <linux/rtnetlink.h>
 
+#include <deque>
+
 #include "tll/channel/base.h"
 #include "tll/channel/module.h"
 
 #include "netlink.h"
+#include "netlink-control.h"
 
 #include "monitor.h"
 
@@ -72,7 +75,8 @@ class NetLink : public tll::channel::Base<NetLink>
 	std::vector<char> _buf_send;
 	std::map<int, std::string> _ifmap;
 
-	enum class Dump { Init, Link, Route, Addr, Neigh, Done } _dump = Dump::Init;
+	enum class Dump { Init, Link, Route, Addr, Neigh, Done };
+	std::deque<Dump> _dump;
 	bool _request_addr:1;
 	bool _request_route:1;
 	bool _request_neigh:1;
@@ -89,7 +93,7 @@ class NetLink : public tll::channel::Base<NetLink>
 	int _close();
 	void _destroy();
 
-	//int _post(const tll_msg_t *msg, int flags);
+	int _post(const tll_msg_t *msg, int flags);
 	int _process(long timeout, int flags);
 
  private:
@@ -116,6 +120,10 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 	if (!_scheme.get())
 		return _log.fail(EINVAL, "Failed to load netlink scheme");
 
+	_scheme_control.reset(context().scheme_load(netlink_control_scheme::scheme_string));
+	if (!_scheme_control.get())
+		return _log.fail(EINVAL, "Failed to load netlink control scheme");
+
 	//if ((internal.caps & (caps::Input | caps::Output)) == caps::Input)
 	//	return _log.fail(EINVAL, "NetLink channel is write-only");
 
@@ -141,17 +149,23 @@ int NetLink::_open(const tll::ConstConfig &s)
 	if (!_socket)
 		return _log.fail(EINVAL, "Failed to open netlink socket: {}", strerror(errno));
 
+	_dump.clear();
+	_dump.push_back(Dump::Link);
 	unsigned groups = RTMGRP_LINK;
 	if (_request_addr) {
+		_dump.push_back(Dump::Addr);
 		if (_af == AF_UNSPEC || _af == AF_INET)  groups |= RTMGRP_IPV4_IFADDR;
 		if (_af == AF_UNSPEC || _af == AF_INET6) groups |= RTMGRP_IPV6_IFADDR;
 	}
 	if (_request_route) {
+		_dump.push_back(Dump::Route);
 		if (_af == AF_UNSPEC || _af == AF_INET)  groups |= RTMGRP_IPV4_ROUTE;
 		if (_af == AF_UNSPEC || _af == AF_INET6) groups |= RTMGRP_IPV6_ROUTE;
 	}
-	if (_request_neigh)
+	if (_request_neigh) {
+		_dump.push_back(Dump::Neigh);
 		groups |= RTMGRP_NEIGH;
+	}
 
 	if (mnl_socket_bind(_socket.get(), groups, MNL_SOCKET_AUTOPID) < 0)
 		return _log.fail(EINVAL, "Failed to bind netlink socket: {}", strerror(errno));
@@ -169,7 +183,6 @@ int NetLink::_open(const tll::ConstConfig &s)
 	if_freenameindex(ifindex);
 	*/
 
-	_dump = Dump::Init;
 	if (_request())
 		return _log.fail(EINVAL, "Failed to request link dump");
 
@@ -180,46 +193,32 @@ int NetLink::_open(const tll::ConstConfig &s)
 
 int NetLink::_request()
 {
-	switch (_dump) {
-	case Dump::Done:
+	if (_dump.empty())
 		return 0;
-	case Dump::Init:
-		_dump = Dump::Link; break;
-	case Dump::Link:
-		_dump = Dump::Addr;
-		if (_request_addr) break;
-	case Dump::Addr:
-		_dump = Dump::Route;
-		if (_request_route) break;
-	case Dump::Route:
-		_dump = Dump::Neigh;
-		if (_request_neigh) break;
-	case Dump::Neigh:
-		_dump = Dump::Done;
-	default:
-		return 0;
-	}
+	Dump dump = _dump.front();
+	_dump.pop_front();
 
 	auto req = mnl_nlmsg_put_header(_buf.data());
 	req->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
 	req->nlmsg_seq = 0;
 
-	if (_dump == Dump::Link) {
+	if (dump == Dump::Link) {
 		req->nlmsg_type = RTM_GETLINK;
 		mnl_nlmsg_put_extra_header(req, sizeof(struct ifinfomsg));
-	} else if (_dump == Dump::Addr) {
+	} else if (dump == Dump::Addr) {
 		req->nlmsg_type = RTM_GETADDR;
 		auto ifi = (struct ifaddrmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct ifaddrmsg));
 		ifi->ifa_family = _af;
-	} else if (_dump == Dump::Route) {
+	} else if (dump == Dump::Route) {
 		req->nlmsg_type = RTM_GETROUTE;
 		auto rtm = (struct rtmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct rtmsg));
 		rtm->rtm_family = _af;
-	} else if (_dump == Dump::Neigh) {
+	} else if (dump == Dump::Neigh) {
 		req->nlmsg_type = RTM_GETNEIGH;
 		auto ndm = (struct ndmsg *) mnl_nlmsg_put_extra_header(req, sizeof(struct ndmsg));
 		ndm->ndm_family = _af;
-	}
+	} else
+		return 0;
 
 	if (mnl_socket_sendto(_socket.get(), req, req->nlmsg_len) < 0)
 		return _log.fail(EINVAL, "Failed to send route request: {}", strerror(errno));
@@ -510,6 +509,26 @@ int NetLink::_process(long timeout, int flags)
 
 	if (done)
 		return _request();
+	return 0;
+}
+
+int NetLink::_post(const tll_msg_t *msg, int flags)
+{
+	if (msg->type != TLL_MESSAGE_CONTROL)
+		return _log.fail(EINVAL, "Data post not supported");
+
+	if (msg->msgid != netlink_control_scheme::Dump<tll_msg_t>::meta_id())
+		return _log.fail(EINVAL, "Unknown control messaage {}", msg->msgid);
+	auto req = tll::scheme::make_binder<netlink_control_scheme::Dump>(*msg);
+	auto init = _dump.empty();
+	if (req.get_request().Link()) _dump.push_back(Dump::Link);
+	if (req.get_request().Addr()) _dump.push_back(Dump::Addr);
+	if (req.get_request().Route()) _dump.push_back(Dump::Route);
+	if (req.get_request().Neigh()) _dump.push_back(Dump::Neigh);
+	if (init) {
+		if (_request())
+			return _log.fail(EINVAL, "Failed to request link dump");
+	}
 	return 0;
 }
 

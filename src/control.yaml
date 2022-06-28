@@ -1,0 +1,4 @@
+- name: Dump
+  id: 10
+  fields:
+    - {name: request, type: uint8, options.type: bits, bits: [Link, Addr, Route, Neigh]}
