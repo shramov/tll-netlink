@@ -103,6 +103,12 @@ class NetLink : public tll::channel::Base<NetLink>
 	int _addr(const struct nlmsghdr *nlh);
 	int _neigh(const struct nlmsghdr *nlh);
 
+	template <typename Buf>
+	int _bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * nest);
+
+	template <typename Buf>
+	int _bond_slave(typename netlink_scheme::BondSlave<Buf> li, const struct nlattr * nest);
+
 	template <template <typename B> typename T>
 	int _route(const struct nlmsghdr *nlh, const struct rtmsg * rm);
 
@@ -283,6 +289,18 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 
 	//netlink_scheme::Link link = {};
 	link.set_index(ifi->ifi_index);
+	link.set_type_raw(ifi->ifi_type);
+	switch (ifi->ifi_type) {
+	case ARPHRD_ETHER: link.set_type(link.type_type::Ether); break;
+	case ARPHRD_LOOPBACK: link.set_type(link.type_type::Loopback); break;
+	case ARPHRD_TUNNEL: link.set_type(link.type_type::Tunnel); break;
+	case ARPHRD_INFINIBAND: link.set_type(link.type_type::Infiniband); break;
+	case ARPHRD_NONE: link.set_type(link.type_type::None); break;
+	case ARPHRD_VOID: link.set_type(link.type_type::Void); break;
+	default:
+		link.set_type(link.type_type::Other);
+		break;
+	}
 	link.set_action(action_new(nlh->nlmsg_type == RTM_NEWLINK));
 	link.set_flags(ifi->ifi_flags);
 	link.set_up(link.get_flags().Up());
@@ -299,11 +317,40 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 			if (mnl_attr_get_payload_len(attr) == 6)
 				link.set_lladdr({mnl_attr_get_str(attr), 6});
 			break;
+		case IFLA_LINKINFO: {
+			_log.info("Link info");
+			const struct nlattr * lia;
+			std::string_view kind, kind_slave;
+			mnl_attr_for_each_nested(lia, attr) {
+				switch (mnl_attr_get_type(lia)) {
+				case IFLA_INFO_KIND:
+					kind = mnl_attr_get_str(lia);
+					_log.debug("Link info kind: {}", kind);
+					break;
+				case IFLA_INFO_SLAVE_KIND:
+					kind_slave = mnl_attr_get_str(lia);
+					_log.debug("Link info slave kind: {}", kind);
+					break;
+				case IFLA_INFO_DATA:
+					if (kind == "bond" && _bond(link.get_linkinfo().set_bond(), lia))
+						return _log.fail(EINVAL, "Failed to parse bond data");
+					break;
+				case IFLA_INFO_SLAVE_DATA:
+					if (kind_slave == "bond" && _bond_slave(link.get_linkinfo().set_bond_slave(), lia))
+						return _log.fail(EINVAL, "Failed to parse bond slave data");
+					break;
+				default:
+					break;
+				}
+			}
+		}
 		default:
 			break;
 		}
 	}
 
+	if (name.empty())
+		return _log.fail(EINVAL, "Empty link name");
 	link.set_name(name);
 
 	auto it = _ifmap.find(ifi->ifi_index);
@@ -328,6 +375,74 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 	_callback_data(&msg);
 
 	return MNL_CB_OK;
+}
+
+template <typename Buf>
+int NetLink::_bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * nest)
+{
+	const struct nlattr * attr;
+	mnl_attr_for_each_nested(attr, nest) {
+		_log.info("Bond attribute {} {}", mnl_attr_get_type(attr), mnl_attr_get_payload_len(attr));
+		switch (mnl_attr_get_type(attr)) {
+		case IFLA_BOND_MODE:
+			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
+				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_MODE: not u8");
+			li.set_mode(static_cast<typename netlink_scheme::Bond<Buf>::type_mode>(mnl_attr_get_u8(attr)));
+			break;
+		case IFLA_BOND_AD_SELECT:
+			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
+				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_AD_SELECT: not u8");
+			li.set_ad_select(mnl_attr_get_u8(attr));
+			break;
+		case IFLA_BOND_ACTIVE_SLAVE:
+			if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
+				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_ACTIVE_SLAVE: not u32");
+			li.set_active_slave(mnl_attr_get_u32(attr));
+			break;
+		case IFLA_BOND_AD_INFO: {
+			const struct nlattr * ada;
+			mnl_attr_for_each_nested(ada, attr) {
+				_log.info("AD info attribute {} {}", mnl_attr_get_type(ada), mnl_attr_get_payload_len(ada));
+				switch (mnl_attr_get_type(ada)) {
+				case IFLA_BOND_AD_INFO_PARTNER_MAC:
+					if (mnl_attr_get_payload_len(ada) == 6)
+						li.set_ad_partner_mac({mnl_attr_get_str(ada), 6});
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+	return 0;
+}
+
+template <typename Buf>
+int NetLink::_bond_slave(typename netlink_scheme::BondSlave<Buf> li, const struct nlattr * nest)
+{
+	const struct nlattr * attr;
+	mnl_attr_for_each_nested(attr, nest) {
+		_log.info("Bond slave attribute {} {}", mnl_attr_get_type(attr), mnl_attr_get_payload_len(attr));
+		switch (mnl_attr_get_type(attr)) {
+		case IFLA_BOND_SLAVE_STATE:
+			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
+				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_SLAVE_STATE: not u8");
+			li.set_state(static_cast<typename netlink_scheme::BondSlave<Buf>::type_state>(mnl_attr_get_u8(attr)));
+			break;
+		case IFLA_BOND_SLAVE_MII_STATUS:
+			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
+				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_SLAVE_MII_STATUS: not u8");
+			li.set_mii_status(static_cast<typename netlink_scheme::BondSlave<Buf>::type_mii_status>(mnl_attr_get_u8(attr)));
+			break;
+		default:
+			break;
+		}
+	}
+	return 0;
 }
 
 int NetLink::_neigh(const struct nlmsghdr * nlh)
