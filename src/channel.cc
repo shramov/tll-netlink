@@ -382,7 +382,7 @@ int NetLink::_bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * 
 {
 	const struct nlattr * attr;
 	mnl_attr_for_each_nested(attr, nest) {
-		_log.info("Bond attribute {} {}", mnl_attr_get_type(attr), mnl_attr_get_payload_len(attr));
+		_log.debug("Bond attribute {} {}", mnl_attr_get_type(attr), mnl_attr_get_payload_len(attr));
 		switch (mnl_attr_get_type(attr)) {
 		case IFLA_BOND_MODE:
 			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
@@ -402,7 +402,7 @@ int NetLink::_bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * 
 		case IFLA_BOND_AD_INFO: {
 			const struct nlattr * ada;
 			mnl_attr_for_each_nested(ada, attr) {
-				_log.info("AD info attribute {} {}", mnl_attr_get_type(ada), mnl_attr_get_payload_len(ada));
+				_log.debug("AD info attribute {} {}", mnl_attr_get_type(ada), mnl_attr_get_payload_len(ada));
 				switch (mnl_attr_get_type(ada)) {
 				case IFLA_BOND_AD_INFO_PARTNER_MAC:
 					if (mnl_attr_get_payload_len(ada) == 6)
@@ -426,7 +426,7 @@ int NetLink::_bond_slave(typename netlink_scheme::BondSlave<Buf> li, const struc
 {
 	const struct nlattr * attr;
 	mnl_attr_for_each_nested(attr, nest) {
-		_log.info("Bond slave attribute {} {}", mnl_attr_get_type(attr), mnl_attr_get_payload_len(attr));
+		_log.debug("Bond slave attribute {} {}", mnl_attr_get_type(attr), mnl_attr_get_payload_len(attr));
 		switch (mnl_attr_get_type(attr)) {
 		case IFLA_BOND_SLAVE_STATE:
 			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
