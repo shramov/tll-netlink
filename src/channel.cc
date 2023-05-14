@@ -10,6 +10,7 @@
 #include <libmnl/libmnl.h>
 #include <linux/if.h>
 #include <linux/if_link.h>
+#include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 
 #include <deque>
@@ -104,12 +105,12 @@ class NetLink : public tll::channel::Base<NetLink>
 	int _neigh(const struct nlmsghdr *nlh);
 
 	template <typename Buf>
-	int _bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * nest);
+	int _bond(typename netlink_scheme::Bond::binder_type<Buf> li, const struct nlattr * nest);
 
 	template <typename Buf>
-	int _bond_slave(typename netlink_scheme::BondSlave<Buf> li, const struct nlattr * nest);
+	int _bond_slave(typename netlink_scheme::BondSlave::binder_type<Buf> li, const struct nlattr * nest);
 
-	template <template <typename B> typename T>
+	template <typename T>
 	int _route(const struct nlmsghdr *nlh, const struct rtmsg * rm);
 
 	template <typename T>
@@ -280,25 +281,28 @@ int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
 
 int NetLink::_link(const struct nlmsghdr * nlh)
 {
+	using Type = netlink_scheme::Link::Type;
+
 	auto ifi = static_cast<struct ifinfomsg *>(mnl_nlmsg_get_payload(nlh));
 
 	std::string_view name;
 
-	auto link = tll::scheme::make_binder<netlink_scheme::Link>(_buf_send);
+	auto link = netlink_scheme::Link::bind(_buf_send);
 	link.view_resize();
 
 	//netlink_scheme::Link link = {};
 	link.set_index(ifi->ifi_index);
 	link.set_type_raw(ifi->ifi_type);
+
 	switch (ifi->ifi_type) {
-	case ARPHRD_ETHER: link.set_type(link.type_type::Ether); break;
-	case ARPHRD_LOOPBACK: link.set_type(link.type_type::Loopback); break;
-	case ARPHRD_TUNNEL: link.set_type(link.type_type::Tunnel); break;
-	case ARPHRD_INFINIBAND: link.set_type(link.type_type::Infiniband); break;
-	case ARPHRD_NONE: link.set_type(link.type_type::None); break;
-	case ARPHRD_VOID: link.set_type(link.type_type::Void); break;
+	case ARPHRD_ETHER: link.set_type(Type::Ether); break;
+	case ARPHRD_LOOPBACK: link.set_type(Type::Loopback); break;
+	case ARPHRD_TUNNEL: link.set_type(Type::Tunnel); break;
+	case ARPHRD_INFINIBAND: link.set_type(Type::Infiniband); break;
+	case ARPHRD_NONE: link.set_type(Type::None); break;
+	case ARPHRD_VOID: link.set_type(Type::Void); break;
 	default:
-		link.set_type(link.type_type::Other);
+		link.set_type(Type::Other);
 		break;
 	}
 	link.set_action(action_new(nlh->nlmsg_type == RTM_NEWLINK));
@@ -378,7 +382,7 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 }
 
 template <typename Buf>
-int NetLink::_bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * nest)
+int NetLink::_bond(typename netlink_scheme::Bond::binder_type<Buf> li, const struct nlattr * nest)
 {
 	const struct nlattr * attr;
 	mnl_attr_for_each_nested(attr, nest) {
@@ -387,7 +391,7 @@ int NetLink::_bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * 
 		case IFLA_BOND_MODE:
 			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
 				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_MODE: not u8");
-			li.set_mode(static_cast<typename netlink_scheme::Bond<Buf>::type_mode>(mnl_attr_get_u8(attr)));
+			li.set_mode(static_cast<netlink_scheme::Bond::mode>(mnl_attr_get_u8(attr)));
 			break;
 		case IFLA_BOND_AD_SELECT:
 			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
@@ -422,7 +426,7 @@ int NetLink::_bond(typename netlink_scheme::Bond<Buf> li, const struct nlattr * 
 }
 
 template <typename Buf>
-int NetLink::_bond_slave(typename netlink_scheme::BondSlave<Buf> li, const struct nlattr * nest)
+int NetLink::_bond_slave(typename netlink_scheme::BondSlave::binder_type<Buf> li, const struct nlattr * nest)
 {
 	const struct nlattr * attr;
 	mnl_attr_for_each_nested(attr, nest) {
@@ -431,12 +435,12 @@ int NetLink::_bond_slave(typename netlink_scheme::BondSlave<Buf> li, const struc
 		case IFLA_BOND_SLAVE_STATE:
 			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
 				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_SLAVE_STATE: not u8");
-			li.set_state(static_cast<typename netlink_scheme::BondSlave<Buf>::type_state>(mnl_attr_get_u8(attr)));
+			li.set_state(static_cast<typename netlink_scheme::BondSlave::state>(mnl_attr_get_u8(attr)));
 			break;
 		case IFLA_BOND_SLAVE_MII_STATUS:
 			if (mnl_attr_validate(attr, MNL_TYPE_U8) < 0)
 				return _log.fail(MNL_CB_ERROR, "Invalid type for IFLA_BOND_SLAVE_MII_STATUS: not u8");
-			li.set_mii_status(static_cast<typename netlink_scheme::BondSlave<Buf>::type_mii_status>(mnl_attr_get_u8(attr)));
+			li.set_mii_status(static_cast<typename netlink_scheme::BondSlave::mii_status>(mnl_attr_get_u8(attr)));
 			break;
 		default:
 			break;
@@ -457,7 +461,7 @@ int NetLink::_neigh(const struct nlmsghdr * nlh)
 
 	_log.debug("Neigh update: {} family {}", name, ndm->ndm_family);
 
-	auto data = tll::scheme::make_binder<netlink_scheme::Neigh>(_buf_send);
+	auto data = netlink_scheme::Neigh::bind(_buf_send);
 	data.view_resize();
 
 	data.set_index(ndm->ndm_ifindex);
@@ -490,10 +494,10 @@ int NetLink::_neigh(const struct nlmsghdr * nlh)
 	return MNL_CB_OK;
 }
 
-template <template <typename B> typename T>
+template <typename T>
 int NetLink::_route(const struct nlmsghdr * nlh, const struct rtmsg * rm)
 {
-	auto msg = tll::scheme::make_binder<T>(_buf_send);
+	auto msg = T::bind(_buf_send);
 	msg.view_resize();
 
 	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWROUTE));
@@ -563,7 +567,7 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 {
 	auto ifa = static_cast<const struct ifaddrmsg *>(mnl_nlmsg_get_payload(nlh));
 
-	auto msg = tll::scheme::make_binder<netlink_scheme::Addr>(_buf_send);
+	auto msg = netlink_scheme::Addr::bind(_buf_send);
 	msg.view().resize(msg.meta_size());
 
 	msg.set_action(action_new(nlh->nlmsg_type == RTM_NEWADDR));
@@ -632,9 +636,9 @@ int NetLink::_post(const tll_msg_t *msg, int flags)
 	if (msg->type != TLL_MESSAGE_CONTROL)
 		return _log.fail(EINVAL, "Data post not supported");
 
-	if (msg->msgid != netlink_control_scheme::Dump<tll_msg_t>::meta_id())
+	if (msg->msgid != netlink_control_scheme::Dump::meta_id())
 		return _log.fail(EINVAL, "Unknown control messaage {}", msg->msgid);
-	auto req = tll::scheme::make_binder<netlink_control_scheme::Dump>(*msg);
+	auto req = netlink_control_scheme::Dump::bind(*msg);
 	auto init = _dump.empty();
 	if (req.get_request().Link()) _dump.push_back(Dump::Link);
 	if (req.get_request().Addr()) _dump.push_back(Dump::Addr);
