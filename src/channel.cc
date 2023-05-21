@@ -79,6 +79,7 @@ class NetLink : public tll::channel::Base<NetLink>
 
 	enum class Dump { Init, Link, Route, Addr, Neigh, Done };
 	std::deque<Dump> _dump;
+	bool _autoclose:1;
 	bool _request_addr:1;
 	bool _request_route:1;
 	bool _request_neigh:1;
@@ -140,6 +141,7 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 
 	auto reader = channel_props_reader(url);
 
+	_autoclose = reader.getT("autoclose", false);
 	_request_addr = reader.getT("addr", true);
 	_request_route = reader.getT("route", true);
 	_request_neigh = reader.getT("neigh", true);
@@ -205,6 +207,8 @@ int NetLink::_request()
 		tll_msg_t msg = { TLL_MESSAGE_CONTROL };
 		msg.msgid = netlink_control_scheme::EndOfData::meta_id();
 		_callback(&msg);
+		if (_autoclose)
+			close();
 		return 0;
 	}
 	Dump dump = _dump.front();
