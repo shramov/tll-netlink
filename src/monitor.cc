@@ -16,8 +16,8 @@ int Monitor::_open(const tll::ConstConfig &params)
 {
 	if (_master->state() != tll::state::Active)
 		return 0;
-	std::array<unsigned char, netlink_control_scheme::Dump<tll_msg_t>::meta_size()> buf;
-	auto dump = tll::scheme::make_binder<netlink_control_scheme::Dump>(buf);
+	std::array<unsigned char, netlink_control_scheme::Dump::meta_size()> buf;
+	auto dump = netlink_control_scheme::Dump::bind(buf);
 	auto v = dump.get_request();
 	v.Link(true);
 	v.Addr(true);
@@ -33,8 +33,8 @@ int Monitor::_open(const tll::ConstConfig &params)
 
 int Monitor::_on_data(const tll_msg_t *msg)
 {
-	if (msg->msgid == netlink_scheme::Link<tll_msg_t>::meta_id()) {
-		auto data = tll::scheme::make_binder<netlink_scheme::Link>(*msg);
+	if (msg->msgid == netlink_scheme::Link::meta_id()) {
+		auto data = netlink_scheme::Link::bind(*msg);
 		if (data.get_name() != _interface)
 			return 0;
 		if (data.get_action() == netlink_scheme::Action::Delete) {
@@ -48,8 +48,8 @@ int Monitor::_on_data(const tll_msg_t *msg)
 			_lladdr = *(const ether_addr *) data.get_lladdr().data();
 			_log.debug("Interface {} lladdr: {}", _interface, *_lladdr);
 		}
-	} else if (msg->msgid == netlink_scheme::Addr<tll_msg_t>::meta_id()) {
-		auto data = tll::scheme::make_binder<netlink_scheme::Addr>(*msg);
+	} else if (msg->msgid == netlink_scheme::Addr::meta_id()) {
+		auto data = netlink_scheme::Addr::bind(*msg);
 		if (data.get_name() != _interface)
 			return 0;
 		auto addr = data.get_addr();
