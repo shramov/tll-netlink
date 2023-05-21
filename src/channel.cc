@@ -201,8 +201,12 @@ int NetLink::_open(const tll::ConstConfig &s)
 
 int NetLink::_request()
 {
-	if (_dump.empty())
+	if (_dump.empty()) {
+		tll_msg_t msg = { TLL_MESSAGE_CONTROL };
+		msg.msgid = netlink_control_scheme::EndOfData::meta_id();
+		_callback(&msg);
 		return 0;
+	}
 	Dump dump = _dump.front();
 	_dump.pop_front();
 
