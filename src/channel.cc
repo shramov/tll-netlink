@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include <libmnl/libmnl.h>
 #include <linux/if.h>
+#include <linux/if_arp.h>
 #include <linux/if_link.h>
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
