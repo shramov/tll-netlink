@@ -18,9 +18,7 @@
 
 #include "mnlutil.h"
 #include "nl80211-channel.h"
-#include "nl80211.attr.h"
-#include "nl80211.scmd.h"
-#include "nl80211.bss.h"
+#include "nl80211-enums.h"
 #include "nl80211.h"
 
 using namespace tll;
