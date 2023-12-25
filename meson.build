@@ -24,11 +24,19 @@ custom_target(
     command : [schemegen, '--format=cpp-binder', '--namespace=netlink_control_scheme', '@INPUT@', '-o', '@OUTPUT@'],
     install : true,
     install_dir : 'include/tll'
-)
+),
+custom_target(
+    'nl80211.h',
+    output : 'nl80211.h',
+    input : 'src/nl80211.yaml',
+    command : [schemegen, '--format=cpp-binder', '--namespace=nl80211_scheme', '@INPUT@', '-o', '@OUTPUT@'],
+    install : true,
+    install_dir : 'include/tll'
+),
 ]
 
 lib = shared_library('tll-netlink',
-	['src/channel.cc', 'src/monitor.cc'] + scheme_headers,
+	['src/channel.cc', 'src/monitor.cc', 'src/nl80211.cc'] + scheme_headers,
 	include_directories : include,
 	dependencies : [fmt, mnl, tll],
 	install : true,

@@ -1,0 +1,10 @@
+- name: Interface
+  id: 10
+  enums:
+    Action: {type: int8, enum: { New: 0, Update: 1, Delete: 2 }}
+  fields:
+    - {name: action, type: Action}
+    - {name: index, type: uint16}
+    - {name: name, type: byte16, options.type: string}
+    - {name: ssid, type: byte32, options.type: string}
+    #- {name: mac, type: byte6}

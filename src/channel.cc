@@ -25,6 +25,7 @@
 #include "netlink-control.h"
 
 #include "monitor.h"
+#include "nl80211-channel.h"
 
 namespace {
 netlink_scheme::Action action_new(bool v)
@@ -329,10 +330,12 @@ int NetLink::_link(const struct nlmsghdr * nlh)
 					_log.debug("Link info slave kind: {}", kind);
 					break;
 				case IFLA_INFO_DATA:
+					_log.debug("Link info data {}", mnl_attr_get_payload_len(lia));
 					if (kind == "bond" && _bond(link.get_linkinfo().set_bond(), lia))
 						return _log.fail(EINVAL, "Failed to parse bond data");
 					break;
 				case IFLA_INFO_SLAVE_DATA:
+					_log.debug("Link info slave data {}", mnl_attr_get_payload_len(lia));
 					if (kind_slave == "bond" && _bond_slave(link.get_linkinfo().set_bond_slave(), lia))
 						return _log.fail(EINVAL, "Failed to parse bond slave data");
 					break;
@@ -645,6 +648,7 @@ int NetLink::_post(const tll_msg_t *msg, int flags)
 }
 
 TLL_DEFINE_IMPL(NetLink);
+TLL_DEFINE_IMPL(NL80211);
 TLL_DEFINE_IMPL(Monitor);
 
-TLL_DEFINE_MODULE(NetLink, Monitor);
+TLL_DEFINE_MODULE(NetLink, NL80211, Monitor);
