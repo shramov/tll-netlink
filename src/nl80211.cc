@@ -116,7 +116,7 @@ int NL80211::_close()
 
 int NL80211::_netlink_cb(const struct nlmsghdr * nlh)
 {
-	_log.info("Netlink message: {}", nlh->nlmsg_type);
+	_log.debug("Netlink message: {}", nlh->nlmsg_type);
 	if (_family_id && nlh->nlmsg_type == _family_id)
 		return _on_family(nlh);
 
@@ -126,7 +126,7 @@ int NL80211::_netlink_cb(const struct nlmsghdr * nlh)
 	case NLMSG_ERROR: {
 		auto error = static_cast<const struct nlmsgerr *>(mnl_nlmsg_get_payload(nlh));
 		if (!error->error) {
-			_log.info("Got genl ACK");
+			_log.debug("Got genl ACK");
 			return MNL_CB_OK;
 		}
 		return _log.fail(MNL_CB_ERROR, "Netlink error message: {}", strerror(-error->error));
@@ -144,9 +144,9 @@ int NL80211::_on_id_ctrl(const struct nlmsghdr * nlh)
 {
 	auto genl = static_cast<const struct genlmsghdr *>(mnl_nlmsg_get_payload(nlh));
 
-	_log.info("Got GENL_ID_CTRL: {} ({})", genl->cmd, CTRL_CMD_NEWFAMILY);
+	_log.debug("Got GENL_ID_CTRL: {} ({})", genl->cmd, CTRL_CMD_NEWFAMILY);
 	if (state() == tll::state::Active) {
-		_log.info("Skip control message, already active");
+		_log.debug("Skip control message, already active");
 		return 0;
 	}
 
