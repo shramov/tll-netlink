@@ -144,7 +144,7 @@ int NL80211::_on_id_ctrl(const struct nlmsghdr * nlh)
 {
 	auto genl = static_cast<const struct genlmsghdr *>(mnl_nlmsg_get_payload(nlh));
 
-	_log.debug("Got GENL_ID_CTRL: {} ({})", genl->cmd, CTRL_CMD_NEWFAMILY);
+	_log.debug("Got GENL_ID_CTRL: {} ({})", genl->cmd, (int) CTRL_CMD_NEWFAMILY);
 	if (state() == tll::state::Active) {
 		_log.debug("Skip control message, already active");
 		return 0;
