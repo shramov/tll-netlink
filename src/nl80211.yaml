@@ -1,3 +1,4 @@
+- options: { cpp-namespace: nl80211_scheme }
 - name: Interface
   id: 10
   enums:

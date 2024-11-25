@@ -8,32 +8,18 @@ mnl = dependency('libmnl')
 
 schemegen = find_program('tll-schemegen', dirs: [tll.get_variable(pkgconfig: 'prefix') / 'python'])
 
-scheme_headers = [
-custom_target(
-    'netlink.h',
-    output : 'netlink.h',
-    input : 'src/netlink.yaml',
-    command : [schemegen, '--format=cpp-binder', '--namespace=netlink_scheme', '@INPUT@', '-o', '@OUTPUT@'],
-    install : true,
-    install_dir : 'include/tll'
-),
-custom_target(
-    'netlink-control.h',
-    output : 'netlink-control.h',
-    input : 'src/control.yaml',
-    command : [schemegen, '--format=cpp-binder', '--namespace=netlink_control_scheme', '@INPUT@', '-o', '@OUTPUT@'],
-    install : true,
-    install_dir : 'include/tll'
-),
-custom_target(
-    'nl80211.h',
-    output : 'nl80211.h',
-    input : 'src/nl80211.yaml',
-    command : [schemegen, '--format=cpp-binder', '--namespace=nl80211_scheme', '@INPUT@', '-o', '@OUTPUT@'],
-    install : true,
-    install_dir : 'include/tll'
-),
-]
+scheme_src = ['netlink.yaml', 'netlink-control.yaml', 'nl80211.yaml']
+scheme_headers = []
+foreach f : scheme_src
+  scheme_headers += [custom_target(
+      f,
+      output : '@BASENAME@.h',
+      input : 'src' / f,
+      command : [schemegen, '--format=cpp-binder', '@INPUT@', '-o', '@OUTPUT@'],
+      install : true,
+      install_dir : 'include/tll'
+  )]
+endforeach
 
 lib = shared_library('tll-netlink',
 	['src/channel.cc', 'src/monitor.cc', 'src/nl80211.cc'] + scheme_headers,

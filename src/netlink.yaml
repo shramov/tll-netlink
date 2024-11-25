@@ -1,4 +1,5 @@
 - name:
+  options.cpp-namespace: netlink_scheme
   enums:
     Action: {type: int8, enum: { New: 0, Delete: 1 }}
     RType:
