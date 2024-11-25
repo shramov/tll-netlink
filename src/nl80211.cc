@@ -267,7 +267,6 @@ int NL80211::_on_family(const struct nlmsghdr * nlh)
 		case NL80211_ATTR_BSS: {
 			_log.debug("Dump NL80211_ATTR_BSS");
 			const struct nlattr * mattr;
-			std::string_view ssid;
 			mnl_attr_for_each_nested(mattr, attr) {
 				type = mnl_attr_get_type(mattr);
 				_log.debug("BSS Attribute {} ({}): {}", nl80211_bss_string((nl80211_bss) type), type, mnl_attr_get_len(mattr));
