@@ -4,7 +4,9 @@
 #include <linux/nl80211.h>
 #include <linux/version.h>
 
-std::string_view nl80211_attr_string(nl80211_attrs attr)
+#include <string_view>
+
+inline std::string_view nl80211_attr_string(nl80211_attrs attr)
 {
 	switch (attr) {
 		case NL80211_ATTR_UNSPEC: return "NL80211_ATTR_UNSPEC";
@@ -532,12 +534,19 @@ std::string_view nl80211_attr_string(nl80211_attrs attr)
 		case NL80211_ATTR_MLO_LINK_DISABLED: return "NL80211_ATTR_MLO_LINK_DISABLED";
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+		case NL80211_ATTR_BSS_DUMP_INCLUDE_USE_DATA: return "NL80211_ATTR_BSS_DUMP_INCLUDE_USE_DATA";
+		case NL80211_ATTR_MLO_TTLM_DLINK: return "NL80211_ATTR_MLO_TTLM_DLINK";
+		case NL80211_ATTR_MLO_TTLM_ULINK: return "NL80211_ATTR_MLO_TTLM_ULINK";
+		case NL80211_ATTR_ASSOC_SPP_AMSDU: return "NL80211_ATTR_ASSOC_SPP_AMSDU";
+#endif
+
 		case __NL80211_ATTR_AFTER_LAST: return "__NL80211_ATTR_AFTER_LAST";
 
 	}
 	return "Unknown";
 }
-std::string_view nl80211_bss_string(nl80211_bss v)
+inline std::string_view nl80211_bss_string(nl80211_bss v)
 {
 	switch(v) {
 		case __NL80211_BSS_INVALID: return "__NL80211_BSS_INVALID";
@@ -570,13 +579,18 @@ std::string_view nl80211_bss_string(nl80211_bss v)
 		case NL80211_BSS_MLD_ADDR: return "NL80211_BSS_MLD_ADDR";
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+		case NL80211_BSS_USE_FOR: return "NL80211_BSS_USE_FOR";
+		case NL80211_BSS_CANNOT_USE_REASONS: return "NL80211_BSS_CANNOT_USE_REASONS";
+#endif
+
 		/* keep last */
 		case __NL80211_BSS_AFTER_LAST: return "__NL80211_BSS_AFTER_LAST";
 	}
 	return "Unknown";
 }
 
-std::string_view nl80211_command_string(nl80211_commands cmd)
+inline std::string_view nl80211_command_string(nl80211_commands cmd)
 {
 	switch (cmd) {
 		case NL80211_CMD_UNSPEC: return "NL80211_CMD_UNSPEC";
@@ -818,6 +832,10 @@ std::string_view nl80211_command_string(nl80211_commands cmd)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
 		case NL80211_CMD_SET_HW_TIMESTAMP: return "NL80211_CMD_SET_HW_TIMESTAMP";
 		case NL80211_CMD_LINKS_REMOVED: return "NL80211_CMD_LINKS_REMOVED";
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+		case NL80211_CMD_SET_TID_TO_LINK_MAPPING: return "NL80211_CMD_SET_TID_TO_LINK_MAPPING";
 #endif
 
 		/* used to define NL80211_CMD_MAX below */
