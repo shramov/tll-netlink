@@ -28,7 +28,7 @@ public:
 
 	int _init(const tll::Channel::Url &url, tll::Channel *master)
 	{
-		std::string_view host = url.host();
+		std::string host = url.host();
 		if (!host.size())
 			return _log.fail(EINVAL, "Empty interface name");
 		_interface = host;
