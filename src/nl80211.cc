@@ -12,34 +12,13 @@
 #include <linux/if.h>
 #include <linux/nl80211.h>
 
-#include "tll/channel/base.h"
-#include "tll/channel/module.h"
-#include "tll/util/sockaddr.h"
+#include <tll/util/sockaddr.h>
 
 #include "mnlutil.h"
 #include "nl80211-channel.h"
 #include "nl80211-enums.h"
-#include "nl80211.h"
 
 using namespace tll;
-
-int NL80211::_init(const Channel::Url &url, Channel * master)
-{
-	_buf.resize(MNL_SOCKET_BUFFER_SIZE);
-
-	if (_scheme_url)
-		return _log.fail(EINVAL, "Netlink channel has it's own scheme, conflicts with init parameter");
-	_scheme.reset(context().scheme_load(nl80211_scheme::scheme_string));
-	if (!_scheme.get())
-		return _log.fail(EINVAL, "Failed to load netlink scheme");
-
-	auto reader = channel_props_reader(url);
-
-	if (!reader)
-		return _log.fail(EINVAL, "Invalid url: {}", reader.error());
-
-	return 0;
-}
 
 int NL80211::_open(const tll::ConstConfig &s)
 {
@@ -48,16 +27,11 @@ int NL80211::_open(const tll::ConstConfig &s)
 
 	_ifmap.clear();
 
-	_socket.reset(mnl_socket_open2(NETLINK_GENERIC, SOCK_NONBLOCK));
-	if (!_socket)
-		return _log.fail(EINVAL, "Failed to open netlink socket: {}", strerror(errno));
-
-	_update_fd(mnl_socket_get_fd(_socket.get()));
+	if (auto r = _netlink_open(NETLINK_GENERIC); r)
+		return r;
 
 	if (_request_family_id())
 		return _log.fail(EINVAL, "Failed to request link dump");
-
-	_update_dcaps(dcaps::CPOLLIN);
 
 	return 0;
 }
@@ -100,21 +74,14 @@ int NL80211::_request_dump()
 	return 0;
 }
 
-int NL80211::_subscribe()
+int NL80211::_on_netlink_done()
 {
 	if (mnl_socket_setsockopt(_socket.get(), NETLINK_ADD_MEMBERSHIP, &_mcast_id, sizeof(_mcast_id)))
 		return _log.fail(EINVAL, "Failed to subscribe to nl80211 updates");
 	return 0;
 }
 
-int NL80211::_close()
-{
-	_update_fd(-1);
-	_socket.reset();
-	return 0;
-}
-
-int NL80211::_netlink_cb(const struct nlmsghdr * nlh)
+int NL80211::_on_netlink_data(const struct nlmsghdr * nlh)
 {
 	_log.debug("Netlink message: {}", nlh->nlmsg_type);
 	if (_family_id && nlh->nlmsg_type == _family_id)
@@ -318,37 +285,4 @@ int NL80211::_on_family(const struct nlmsghdr * nlh)
 	_callback_data(&m);
 
 	return MNL_CB_OK;
-}
-
-int NL80211::_process(long timeout, int flags)
-{
-	int len = mnl_socket_recvfrom(_socket.get(), _buf.data(), _buf.size());
-	if (len < 0) {
-		if (errno == EAGAIN)
-			return EAGAIN;
-		return _log.fail(EINVAL, "Failed to recv netlink message: {}", strerror(errno));
-	}
-
-	auto nlh = static_cast<const struct nlmsghdr *>((void *) _buf.data());
-
-	int r = 0;
-	bool done = false;
-	while (mnl_nlmsg_ok(nlh, len)) {
-		if (nlh->nlmsg_flags & NLM_F_DUMP_INTR)
-			return _log.fail(EINTR, "Netlink dump was interrupted");
-
-		r = _netlink_cb(nlh);
-		if (r == MNL_CB_ERROR)
-			return _log.fail(EINVAL, "Failed to handle netlink message {}", nlh->nlmsg_type);
-		else if (r == MNL_CB_STOP) {
-			_log.info("Dump completed");
-			done = true;
-		}
-
-		nlh = mnl_nlmsg_next(nlh, &len);
-	}
-
-	if (done)
-		return _subscribe();
-	return 0;
 }

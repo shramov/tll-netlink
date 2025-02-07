@@ -16,15 +16,13 @@
 
 #include <deque>
 
+#include <tll/channel/module.h>
+
+#include "base.h"
 #include "mnlutil.h"
-
-#include "tll/channel/base.h"
-#include "tll/channel/module.h"
-
-#include "netlink.h"
-#include "netlink-control.h"
-
 #include "monitor.h"
+#include "netlink-control.h"
+#include "netlink.h"
 #include "nl80211-channel.h"
 
 namespace {
@@ -55,11 +53,9 @@ tll::result_t<int> addr_fill(netlink_scheme::IPAny<Buf> addr, int af, const nlat
 
 using namespace tll;
 
-class NetLink : public tll::channel::Base<NetLink>
+class NetLink : public NLBase<NetLink>
 {
-	mnl_ptr_t _socket;
-	std::vector<char> _buf;
-	std::vector<char> _buf_send;
+	using Base = NLBase<NetLink>;
 	std::map<int, std::string> _ifmap;
 
 	enum class Dump { Init, Link, Route, Addr, Neigh, Done };
@@ -70,23 +66,20 @@ class NetLink : public tll::channel::Base<NetLink>
 	bool _request_neigh:1;
 	int _af = AF_UNSPEC;
 
-	int _request();
-
  public:
 	static constexpr std::string_view channel_protocol() { return "netlink"; }
-	static constexpr auto scheme_policy() { return Base::SchemePolicy::Manual; }
+	static constexpr auto netlink_scheme_string() { return netlink_scheme::scheme_string; }
 
 	int _init(const tll::Channel::Url &, tll::Channel *master);
 	int _open(const tll::ConstConfig &);
-	int _close();
 	void _destroy();
 
 	int _post(const tll_msg_t *msg, int flags);
-	int _process(long timeout, int flags);
+
+	int _on_netlink_data(const struct nlmsghdr *nlh);
+	int _on_netlink_done();
 
  private:
-
-	int _netlink_cb(const struct nlmsghdr *nlh);
 	int _link(const struct nlmsghdr *nlh);
 	int _addr(const struct nlmsghdr *nlh);
 	int _neigh(const struct nlmsghdr *nlh);
@@ -106,13 +99,8 @@ class NetLink : public tll::channel::Base<NetLink>
 
 int NetLink::_init(const Channel::Url &url, Channel * master)
 {
-	_buf.resize(MNL_SOCKET_BUFFER_SIZE);
-
-	if (_scheme_url)
-		return _log.fail(EINVAL, "Netlink channel has it's own scheme, conflicts with init parameter");
-	_scheme.reset(context().scheme_load(netlink_scheme::scheme_string));
-	if (!_scheme.get())
-		return _log.fail(EINVAL, "Failed to load netlink scheme");
+	if (auto r = Base::_init(url, master); r)
+		return r;
 
 	_scheme_control.reset(context().scheme_load(netlink_control_scheme::scheme_string));
 	if (!_scheme_control.get())
@@ -140,9 +128,8 @@ int NetLink::_init(const Channel::Url &url, Channel * master)
 
 int NetLink::_open(const tll::ConstConfig &s)
 {
-	_socket.reset(mnl_socket_open2(NETLINK_ROUTE, SOCK_NONBLOCK));
-	if (!_socket)
-		return _log.fail(EINVAL, "Failed to open netlink socket: {}", strerror(errno));
+	if (auto r = _netlink_open(NETLINK_ROUTE); r)
+		return r;
 
 	_dump.clear();
 	_dump.push_back(Dump::Link);
@@ -165,8 +152,6 @@ int NetLink::_open(const tll::ConstConfig &s)
 	if (mnl_socket_bind(_socket.get(), groups, MNL_SOCKET_AUTOPID) < 0)
 		return _log.fail(EINVAL, "Failed to bind netlink socket: {}", strerror(errno));
 
-	_update_fd(mnl_socket_get_fd(_socket.get()));
-
 	/*
 	auto ifindex = if_nameindex();
 	if (!ifindex)
@@ -178,15 +163,13 @@ int NetLink::_open(const tll::ConstConfig &s)
 	if_freenameindex(ifindex);
 	*/
 
-	if (_request())
+	if (_on_netlink_done())
 		return _log.fail(EINVAL, "Failed to request link dump");
-
-	_update_dcaps(dcaps::CPOLLIN);
 
 	return 0;
 }
 
-int NetLink::_request()
+int NetLink::_on_netlink_done()
 {
 	if (_dump.empty()) {
 		tll_msg_t msg = { TLL_MESSAGE_CONTROL };
@@ -226,14 +209,7 @@ int NetLink::_request()
 	return 0;
 }
 
-int NetLink::_close()
-{
-	_update_fd(-1);
-	_socket.reset();
-	return 0;
-}
-
-int NetLink::_netlink_cb(const struct nlmsghdr * nlh)
+int NetLink::_on_netlink_data(const struct nlmsghdr * nlh)
 {
 	_log.trace("Netlink message: {}", nlh->nlmsg_type);
 	switch (nlh->nlmsg_type) {
@@ -594,39 +570,6 @@ int NetLink::_addr(const struct nlmsghdr * nlh)
 	return MNL_CB_OK;
 }
 
-int NetLink::_process(long timeout, int flags)
-{
-	int len = mnl_socket_recvfrom(_socket.get(), _buf.data(), _buf.size());
-	if (len < 0) {
-		if (errno == EAGAIN)
-			return EAGAIN;
-		return _log.fail(EINVAL, "Failed to recv netlink message: {}", strerror(errno));
-	}
-
-	auto nlh = static_cast<const struct nlmsghdr *>((void *) _buf.data());
-
-	int r = 0;
-	bool done = false;
-	while (mnl_nlmsg_ok(nlh, len)) {
-		if (nlh->nlmsg_flags & NLM_F_DUMP_INTR)
-			return _log.fail(EINTR, "Netlink dump was interrupted");
-
-		r = _netlink_cb(nlh);
-		if (r == MNL_CB_ERROR)
-			return _log.fail(EINVAL, "Failed to handle netlink message {}", nlh->nlmsg_type);
-		else if (r == MNL_CB_STOP) {
-			_log.info("Dump completed");
-			done = true;
-		}
-
-		nlh = mnl_nlmsg_next(nlh, &len);
-	}
-
-	if (done)
-		return _request();
-	return 0;
-}
-
 int NetLink::_post(const tll_msg_t *msg, int flags)
 {
 	if (msg->type != TLL_MESSAGE_CONTROL)
@@ -641,7 +584,7 @@ int NetLink::_post(const tll_msg_t *msg, int flags)
 	if (req.get_request().Route()) _dump.push_back(Dump::Route);
 	if (req.get_request().Neigh()) _dump.push_back(Dump::Neigh);
 	if (init) {
-		if (_request())
+		if (_on_netlink_done())
 			return _log.fail(EINVAL, "Failed to request link dump");
 	}
 	return 0;
