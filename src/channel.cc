@@ -21,8 +21,8 @@
 #include "base.h"
 #include "mnlutil.h"
 #include "monitor.h"
-#include "netlink-control.h"
-#include "netlink.h"
+#include "scheme/netlink-control.h"
+#include "scheme/netlink.h"
 #include "nl80211-channel.h"
 
 namespace {

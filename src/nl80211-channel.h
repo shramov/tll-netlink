@@ -2,7 +2,7 @@
 #define _NL80211_CHANNEL_H
 
 #include "base.h"
-#include "nl80211.h"
+#include "scheme/nl80211.h"
 
 class NL80211 : public NLBase<NL80211>
 {

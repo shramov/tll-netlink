@@ -6,20 +6,7 @@ tll = dependency('tll')
 fmt = dependency('fmt')
 mnl = dependency('libmnl')
 
-schemegen = find_program('tll-schemegen', dirs: [tll.get_variable(pkgconfig: 'prefix') / 'python'])
-
-scheme_src = ['netlink.yaml', 'netlink-control.yaml', 'nl80211.yaml']
-scheme_headers = []
-foreach f : scheme_src
-  scheme_headers += [custom_target(
-      f,
-      output : '@BASENAME@.h',
-      input : 'src' / f,
-      command : [schemegen, '--format=cpp-binder', '@INPUT@', '-o', '@OUTPUT@'],
-      install : true,
-      install_dir : 'include/tll'
-  )]
-endforeach
+subdir('scheme') # scheme_headers defined here
 
 lib = shared_library('tll-netlink',
 	['src/channel.cc', 'src/monitor.cc', 'src/nl80211.cc'] + scheme_headers,
