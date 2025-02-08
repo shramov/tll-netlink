@@ -12,3 +12,5 @@ foreach f : scheme_src
       install_dir : 'include/tll/netlink'
   )]
 endforeach
+
+install_data(scheme_src, install_dir: get_option('datadir') / 'tll/scheme/tll/netlink')
