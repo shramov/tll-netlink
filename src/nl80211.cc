@@ -15,7 +15,7 @@
 #include <tll/util/sockaddr.h>
 
 #include "mnlutil.h"
-#include "nl80211-channel.h"
+#include "nl80211.h"
 #include "nl80211-enums.h"
 
 using namespace tll;

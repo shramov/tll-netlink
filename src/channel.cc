@@ -23,7 +23,7 @@
 #include "monitor.h"
 #include "scheme/netlink-control.h"
 #include "scheme/netlink.h"
-#include "nl80211-channel.h"
+#include "nl80211.h"
 
 namespace {
 netlink_scheme::Action action_new(bool v)
