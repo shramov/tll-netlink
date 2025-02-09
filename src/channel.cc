@@ -24,6 +24,7 @@
 #include "scheme/netlink-control.h"
 #include "scheme/netlink.h"
 #include "nl80211.h"
+#include "sock-diag.h"
 
 namespace {
 netlink_scheme::Action action_new(bool v)
@@ -593,5 +594,6 @@ int NetLink::_post(const tll_msg_t *msg, int flags)
 TLL_DEFINE_IMPL(NetLink);
 TLL_DEFINE_IMPL(NL80211);
 TLL_DEFINE_IMPL(Monitor);
+TLL_DEFINE_IMPL(SockDiag);
 
-TLL_DEFINE_MODULE(NetLink, NL80211, Monitor);
+TLL_DEFINE_MODULE(NetLink, NL80211, Monitor, SockDiag);

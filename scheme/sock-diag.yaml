@@ -1,0 +1,33 @@
+- name:
+  options.cpp-namespace: sock_diag_scheme
+  enums:
+    TcpState:
+      type: uint8
+      enum:
+        TCP_ESTABLISHED: 1
+        TCP_SYN_SENT: 2
+        TCP_SYN_RECV: 3
+        TCP_FIN_WAIT1: 4
+        TCP_FIN_WAIT2: 5
+        TCP_TIME_WAIT: 6
+        TCP_CLOSE: 7
+        TCP_CLOSE_WAIT: 8
+        TCP_LAST_ACK: 9
+        TCP_LISTEN: 10
+        TCP_CLOSING: 11
+  unions:
+    IPAny: {union: [{name: ipv4, type: uint32}, {name: ipv6, type: byte16}]}
+  aliases:
+    - {name: IPv4, type: uint32}
+    - {name: IPv6, type: byte16}
+    - {name: Interface, type: byte16, options.type: string}
+
+- name: InfoTcp4
+  id: 10
+  fields:
+    - {name: saddr, type: IPv4}
+    - {name: sport, type: uint16}
+    - {name: daddr, type: IPv4}
+    - {name: dport, type: uint16}
+    - {name: state, type: TcpState}
+    - {name: rtt, type: uint32, options.type: duration, options.resolution: us}

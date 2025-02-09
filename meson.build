@@ -9,7 +9,7 @@ mnl = dependency('libmnl')
 subdir('scheme') # scheme_headers defined here
 
 lib = shared_library('tll-netlink',
-	['src/channel.cc', 'src/monitor.cc', 'src/nl80211.cc'] + scheme_headers,
+	['src/channel.cc', 'src/monitor.cc', 'src/nl80211.cc', 'src/sock-diag.cc'] + scheme_headers,
 	include_directories : include,
 	dependencies : [fmt, mnl, tll],
 	install : true,

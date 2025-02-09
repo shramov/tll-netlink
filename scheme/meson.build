@@ -1,6 +1,6 @@
 schemegen = find_program('tll-schemegen', dirs: [tll.get_variable(pkgconfig: 'prefix') / 'python'])
 
-scheme_src = ['netlink.yaml', 'netlink-control.yaml', 'nl80211.yaml']
+scheme_src = ['netlink.yaml', 'netlink-control.yaml', 'nl80211.yaml', 'sock-diag.yaml', 'sock-diag-control.yaml']
 scheme_headers = []
 foreach f : scheme_src
   scheme_headers += [custom_target(

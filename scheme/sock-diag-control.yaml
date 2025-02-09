@@ -1,0 +1,39 @@
+- name:
+  options.cpp-namespace: sock_diag_control_scheme
+  bits:
+    TcpStateMask:
+      type: uint32
+      bits:
+        - TCP_NONE
+        - TCP_ESTABLISHED
+        - TCP_SYN_SENT
+        - TCP_SYN_RECV
+        - TCP_FIN_WAIT1
+        - TCP_FIN_WAIT2
+        - TCP_TIME_WAIT
+        - TCP_CLOSE
+        - TCP_CLOSE_WAIT
+        - TCP_LAST_ACK
+        - TCP_LISTEN
+        - TCP_CLOSING
+  aliases:
+    - {name: IPv4, type: uint32}
+
+- name: DumpTcp4
+  id: 10
+  fields:
+    - {name: mode, type: uint8, options.type: enum, enum: {Dump: 0, Single: 1}}
+    - {name: saddr, type: IPv4}
+    - {name: sport, type: uint16}
+    - {name: daddr, type: IPv4}
+    - {name: dport, type: uint16}
+    - {name: state, type: TcpStateMask}
+
+- name: EndOfData
+  id: 20
+
+- name: Error
+  id: 30
+  fields:
+    - {name: code, type: int32}
+    - {name: text, type: string}
