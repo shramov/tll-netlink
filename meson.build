@@ -15,8 +15,8 @@ lib = shared_library('tll-netlink',
 	install : true,
 )
 
-#test('pytest', import('python').find_installation('python3')
-#	, args: ['-m', 'pytest', '-v', '--log-level=DEBUG', 'tests/']
-#	, env: 'BUILD_DIR=@0@'.format(meson.current_build_dir())
-#	, workdir: meson.current_source_dir()
-#)
+test('pytest', import('python').find_installation('python3')
+	, args: ['-m', 'pytest', '-v', '--log-level=DEBUG', 'tests/']
+	, env: 'BUILD_DIR=@0@'.format(meson.current_build_dir())
+	, workdir: meson.current_source_dir()
+)
