@@ -29,6 +29,7 @@ class SockDiag : public NLBase<SockDiag>
 	int _on_netlink_data(const struct nlmsghdr *nlh);
 	int _on_netlink_done();
 
+	template <typename T>
 	int _on_diag(const struct nlmsghdr *nlh);
 	int _request(const Filter &filter, bool dump);
 };

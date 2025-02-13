@@ -31,3 +31,13 @@
     - {name: dport, type: uint16}
     - {name: state, type: TcpState}
     - {name: rtt, type: uint32, options.type: duration, options.resolution: us}
+
+- name: InfoTcp6
+  id: 11
+  fields:
+    - {name: saddr, type: IPv6}
+    - {name: sport, type: uint16}
+    - {name: daddr, type: IPv6}
+    - {name: dport, type: uint16}
+    - {name: state, type: TcpState}
+    - {name: rtt, type: uint32, options.type: duration, options.resolution: us}

@@ -1,5 +1,7 @@
 - name:
   options.cpp-namespace: sock_diag_control_scheme
+  enums:
+    Mode: {type: uint8, enum: {Dump: 0, Single: 1}}
   bits:
     TcpStateMask:
       type: uint32
@@ -18,14 +20,25 @@
         - TCP_CLOSING
   aliases:
     - {name: IPv4, type: uint32}
+    - {name: IPv6, type: byte16}
 
 - name: DumpTcp4
   id: 10
   fields:
-    - {name: mode, type: uint8, options.type: enum, enum: {Dump: 0, Single: 1}}
+    - {name: mode, type: Mode}
     - {name: saddr, type: IPv4}
     - {name: sport, type: uint16}
     - {name: daddr, type: IPv4}
+    - {name: dport, type: uint16}
+    - {name: state, type: TcpStateMask}
+
+- name: DumpTcp6
+  id: 11
+  fields:
+    - {name: mode, type: Mode}
+    - {name: saddr, type: IPv6}
+    - {name: sport, type: uint16}
+    - {name: daddr, type: IPv6}
     - {name: dport, type: uint16}
     - {name: state, type: TcpStateMask}
 

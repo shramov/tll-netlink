@@ -92,14 +92,19 @@ int SockDiag::_request(const Filter &filter, bool dump)
 
 	req->nlmsg_type = SOCK_DIAG_BY_FAMILY;
 	auto ireq = (struct inet_diag_req_v2 *) mnl_nlmsg_put_extra_header(req, sizeof(struct inet_diag_req_v2));
-	ireq->sdiag_family = AF_INET;
+	ireq->sdiag_family = filter.src->sa_family;
 	ireq->sdiag_protocol = IPPROTO_TCP;
 	ireq->idiag_ext |= 1 << (INET_DIAG_INFO - 1);
 	ireq->idiag_states |= filter.state;
 	if (ireq->idiag_states == 0)
 		ireq->idiag_states = (1 << (TCP_CLOSING + 1)) - 1;
-	ireq->id.idiag_src[0] = filter.src.in()->sin_addr.s_addr;
-	ireq->id.idiag_dst[0] = filter.dst.in()->sin_addr.s_addr;
+	if (filter.src->sa_family == AF_INET) {
+		ireq->id.idiag_src[0] = filter.src.in()->sin_addr.s_addr;
+		ireq->id.idiag_dst[0] = filter.dst.in()->sin_addr.s_addr;
+	} else {
+		memcpy(&ireq->id.idiag_src, &filter.src.in6()->sin6_addr, 16);
+		memcpy(&ireq->id.idiag_dst, &filter.dst.in6()->sin6_addr, 16);
+	}
 	ireq->id.idiag_sport = filter.src.in()->sin_port;
 	ireq->id.idiag_dport = filter.dst.in()->sin_port;
 	ireq->id.idiag_cookie[0] = INET_DIAG_NOCOOKIE;
@@ -115,18 +120,32 @@ int SockDiag::_post(const tll_msg_t *msg, int flags)
 	if (msg->type != TLL_MESSAGE_CONTROL)
 		return _log.fail(EINVAL, "Data post not supported");
 
-	if (msg->msgid != sock_diag_control_scheme::DumpTcp4::meta_id())
-		return _log.fail(EINVAL, "Unknown control messaage {}", msg->msgid);
-	auto req = sock_diag_control_scheme::DumpTcp4::bind(*msg);
 	Filter filter = {};
-	filter.src->sa_family = filter.dst->sa_family = AF_INET;
-	filter.src.size = filter.dst.size = sizeof(sockaddr_in);
-	filter.src.in()->sin_addr.s_addr = req.get_saddr();
-	filter.dst.in()->sin_addr.s_addr = req.get_daddr();
-	filter.src.in()->sin_port = htons(req.get_sport());
-	filter.dst.in()->sin_port = htons(req.get_dport());
-	filter.state = req.get_state();
-	return _request(filter, req.get_mode() == sock_diag_control_scheme::DumpTcp4::mode::Dump);
+	switch (msg->msgid) {
+	case sock_diag_control_scheme::DumpTcp4::meta_id(): {
+		auto req = sock_diag_control_scheme::DumpTcp4::bind(*msg);
+		filter.src->sa_family = filter.dst->sa_family = AF_INET;
+		filter.src.size = filter.dst.size = sizeof(sockaddr_in);
+		filter.src.in()->sin_addr.s_addr = req.get_saddr();
+		filter.dst.in()->sin_addr.s_addr = req.get_daddr();
+		filter.src.in()->sin_port = htons(req.get_sport());
+		filter.dst.in()->sin_port = htons(req.get_dport());
+		filter.state = req.get_state();
+		return _request(filter, req.get_mode() == sock_diag_control_scheme::Mode::Dump);
+	}
+	case sock_diag_control_scheme::DumpTcp6::meta_id(): {
+		auto req = sock_diag_control_scheme::DumpTcp6::bind(*msg);
+		filter.src->sa_family = filter.dst->sa_family = AF_INET6;
+		filter.src.size = filter.dst.size = sizeof(sockaddr_in6);
+		memcpy(&filter.src.in6()->sin6_addr, req.get_saddr().data(), 16);
+		memcpy(&filter.dst.in6()->sin6_addr, req.get_daddr().data(), 16);
+		filter.src.in6()->sin6_port = htons(req.get_sport());
+		filter.dst.in6()->sin6_port = htons(req.get_dport());
+		filter.state = req.get_state();
+		return _request(filter, req.get_mode() == sock_diag_control_scheme::Mode::Dump);
+	}
+	}
+	return _log.fail(EINVAL, "Unknown control messaage {}", msg->msgid);
 }
 
 int SockDiag::_on_netlink_done()
@@ -161,27 +180,37 @@ int SockDiag::_on_netlink_data(const struct nlmsghdr * nlh)
 		_callback(&msg);
 		return MNL_CB_OK;
 	}
-	case SOCK_DIAG_BY_FAMILY:
-		return _on_diag(nlh);
-
+	case SOCK_DIAG_BY_FAMILY: {
+		auto idiag = static_cast<struct inet_diag_msg *>(mnl_nlmsg_get_payload(nlh));
+		if (idiag->idiag_family == AF_INET)
+			return _on_diag<sock_diag_scheme::InfoTcp4>(nlh);
+		else if (idiag->idiag_family == AF_INET6)
+			return _on_diag<sock_diag_scheme::InfoTcp6>(nlh);
+		else
+			return _log.fail(MNL_CB_ERROR, "Unsupported address family: {}", idiag->idiag_family);
+	}
 	default:
 		_log.debug("Unknown netlink message: {}", nlh->nlmsg_type);
 	}
 	return MNL_CB_OK;
 }
 
+template <typename T>
 int SockDiag::_on_diag(const struct nlmsghdr * nlh)
 {
 	auto idiag = static_cast<struct inet_diag_msg *>(mnl_nlmsg_get_payload(nlh));
-	if (idiag->idiag_family != AF_INET)
-		return 0;
 	auto id = &idiag->id;
 
-	auto data = sock_diag_scheme::InfoTcp4::bind_reset(_buf_send);
+	auto data = T::bind_reset(_buf_send);
 	data.set_sport(ntohs(id->idiag_sport));
 	data.set_dport(ntohs(id->idiag_dport));
-	data.set_saddr(id->idiag_src[0]);
-	data.set_daddr(id->idiag_dst[0]);
+	if constexpr (std::is_same_v<T, sock_diag_scheme::InfoTcp4>) {
+		data.set_saddr(id->idiag_src[0]);
+		data.set_daddr(id->idiag_dst[0]);
+	} else {
+		data.set_saddr(std::string_view((char *) id->idiag_src, 16));
+		data.set_daddr(std::string_view((char *) id->idiag_dst, 16));
+	}
 	data.set_state((sock_diag_scheme::TcpState) idiag->idiag_state);
 
 	const struct nlattr * attr;
