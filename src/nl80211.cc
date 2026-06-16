@@ -44,7 +44,7 @@ int NL80211::_request_family_id()
 	req->nlmsg_seq = 0;
 
 	auto genreq = (struct genlmsghdr*) mnl_nlmsg_put_extra_header(req, sizeof(struct genlmsghdr));
-	genreq->cmd = CTRL_CMD_GETFAMILY; 
+	genreq->cmd = CTRL_CMD_GETFAMILY;
 	genreq->version = 1;
 
 	mnl_attr_put_strz(req, CTRL_ATTR_FAMILY_NAME, NL80211_GENL_NAME);
@@ -62,9 +62,9 @@ int NL80211::_request_dump()
 	req->nlmsg_seq = 0;
 
 	auto genreq = (struct genlmsghdr*) mnl_nlmsg_put_extra_header(req, sizeof(struct genlmsghdr));
-	genreq->cmd = NL80211_CMD_GET_INTERFACE; 
-	//genreq->cmd = NL80211_CMD_GET_WIPHY; 
-	//genreq->cmd = NL80211_CMD_GET_SCAN; 
+	genreq->cmd = NL80211_CMD_GET_INTERFACE;
+	//genreq->cmd = NL80211_CMD_GET_WIPHY;
+	//genreq->cmd = NL80211_CMD_GET_SCAN;
 	genreq->version = 1;
 
 	mnl_attr_put_u32(req, NL80211_ATTR_IFINDEX, 3);
